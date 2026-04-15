@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(lsof -ti:3000)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(npx prisma:*)",
+      "Bash(ls /Users/marvin/dev/wizard/src/generated/prisma/index*)",
+      "Bash(pnpm remove:*)",
+      "Bash(DATABASE_URL=\"file:./prisma/dev.db\" npx prisma migrate dev --name init)",
+      "Bash(pnpm dev:*)",
+      "Bash(curl -s http://localhost:3000/api/expressions)",
+      "Bash(kill 66444)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-001\",\"text\":\"A test confession\",\"emotion\":\"joy\",\"owner\":\"0xabc123\"}')",
+      "Bash(curl -s \"http://localhost:3000/api/expressions/mine?owner=0xabc123\")",
+      "Bash(curl -s -X DELETE http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-001\",\"owner\":\"0xabc123\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"text\":\"Minted expression\",\"emotion\":\"love\",\"owner\":\"0xabc123\"}')",
+      "Bash(curl -s -X PATCH http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"minted\":true,\"tokenURI\":\"ipfs://test\",\"txHash\":\"0xdeadbeef\"}')",
+      "Bash(curl -s -X PATCH http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"hidden\":true}')",
+      "Bash(curl -s -X DELETE http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"owner\":\"0xabc123\"}')"
+    ]
+  }
+}

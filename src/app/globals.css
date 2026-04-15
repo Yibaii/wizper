@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Zpix';
+  src: url('https://cdn.jsdelivr.net/gh/AtelierArith/zpix-pixel-font@v3.1.5/dist/zpix.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-wizard-dark: #0a0a1a;
+  --color-wizard-purple: #1a0a2e;
+  --color-wizard-navy: #0a1628;
+  --color-wizard-cyan: #00f5d4;
+  --color-wizard-violet: #b24bf3;
+  --color-wizard-green: #39ff14;
+  --color-wizard-gold: #ffd700;
+  --color-wizard-parchment: #d4a574;
+  --color-wizard-parchment-dark: #a67c52;
+  --color-wizard-ember: #ff6b35;
+  --color-wizard-pink: #ff6b9d;
+  --color-wizard-blue: #00bfff;
+
+  --font-family-pixel: 'Press Start 2P', 'Zpix', monospace;
+  --font-family-pixel-en: 'Press Start 2P', monospace;
+}
+
+/* ---- Base ---- */
+body {
+  background-color: var(--color-wizard-dark);
+  color: #e0e0e0;
+  font-family: var(--font-family-pixel);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+::selection {
+  background: var(--color-wizard-violet);
+  color: #fff;
+}
+
+/* ---- Pixel rendering ---- */
+.pixel-render {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* ---- Glow utilities ---- */
+.glow-cyan {
+  box-shadow: 0 0 8px var(--color-wizard-cyan), 0 0 24px color-mix(in srgb, var(--color-wizard-cyan) 40%, transparent);
+}
+.glow-violet {
+  box-shadow: 0 0 8px var(--color-wizard-violet), 0 0 24px color-mix(in srgb, var(--color-wizard-violet) 40%, transparent);
+}
+.glow-green {
+  box-shadow: 0 0 8px var(--color-wizard-green), 0 0 24px color-mix(in srgb, var(--color-wizard-green) 40%, transparent);
+}
+.glow-gold {
+  box-shadow: 0 0 8px var(--color-wizard-gold), 0 0 24px color-mix(in srgb, var(--color-wizard-gold) 40%, transparent);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 8px var(--color-wizard-cyan), 0 0 20px color-mix(in srgb, var(--color-wizard-cyan) 50%, transparent);
+}
+.text-glow-violet {
+  text-shadow: 0 0 8px var(--color-wizard-violet), 0 0 20px color-mix(in srgb, var(--color-wizard-violet) 50%, transparent);
+}
+.text-glow-gold {
+  text-shadow: 0 0 8px var(--color-wizard-gold), 0 0 20px color-mix(in srgb, var(--color-wizard-gold) 50%, transparent);
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-wizard-dark); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-wizard-purple);
+  border: 1px solid color-mix(in srgb, var(--color-wizard-violet) 40%, transparent);
+}
+
+/* ---- Animations ---- */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: .6; }
+  50% { opacity: 1; }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-fade-in-up { animation: fade-in-up .5s ease-out both; }
+
+/* Stagger children */
+.stagger-children > :nth-child(1) { animation-delay: 0s; }
+.stagger-children > :nth-child(2) { animation-delay: .07s; }
+.stagger-children > :nth-child(3) { animation-delay: .14s; }
+.stagger-children > :nth-child(4) { animation-delay: .21s; }
+.stagger-children > :nth-child(5) { animation-delay: .28s; }
+.stagger-children > :nth-child(6) { animation-delay: .35s; }
+.stagger-children > :nth-child(7) { animation-delay: .42s; }
+.stagger-children > :nth-child(8) { animation-delay: .49s; }
+.stagger-children > :nth-child(9) { animation-delay: .56s; }
+.stagger-children > :nth-child(10) { animation-delay: .63s; }
+.stagger-children > :nth-child(11) { animation-delay: .7s; }
+.stagger-children > :nth-child(12) { animation-delay: .77s; }

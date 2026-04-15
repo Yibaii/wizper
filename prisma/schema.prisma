@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Expression {
+  id        String   @id
+  text      String
+  emotion   String   // anger | sadness | joy | fear | love | confusion
+  minted    Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  owner     String   // wallet address (lowercase)
+  tokenURI  String?  // IPFS URI (set after mint)
+  txHash    String?  // mint transaction hash
+  createdAt DateTime @default(now())
+  mintedAt  DateTime?
+
+  links     Link[]   @relation("FromExpression")
+  linkedBy  Link[]   @relation("ToExpression")
+}
+
+model Link {
+  id     String @id
+  fromId String
+  toId   String
+  status String @default("pending") // pending | confirmed
+
+  from Expression @relation("FromExpression", fields: [fromId], references: [id])
+  to   Expression @relation("ToExpression", fields: [toId], references: [id])
+}
