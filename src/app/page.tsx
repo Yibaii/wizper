@@ -1,11 +1,40 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import PotionButton from '@/components/ui/PotionButton';
 import WizardCharacter from '@/components/confession/WizardCharacter';
+import { useApp } from '@/context/AppContext';
 
 export default function HomePage() {
+  const { wallet, claimDailyReward } = useApp();
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [claimError, setClaimError] = useState('');
+
+  async function handleClaim() {
+    if (!wallet.connected) {
+      wallet.connect();
+      return;
+    }
+    setClaiming(true);
+    setClaimError('');
+    try {
+      await claimDailyReward();
+      setClaimed(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Claim once per day')) {
+        setClaimError('Already claimed today, come back tomorrow!');
+      } else {
+        setClaimError('Claim failed');
+      }
+    } finally {
+      setClaiming(false);
+    }
+  }
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center px-4 relative overflow-hidden">
       {/* Hero content */}
@@ -46,6 +75,36 @@ export default function HomePage() {
             ✦ Reveal Your Thought
           </PotionButton>
         </Link>
+
+        {/* Daily Reward */}
+        <motion.div
+          className="mt-10 border border-wizard-gold/20 bg-wizard-gold/5 px-6 py-4 w-full max-w-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-pixel text-[9px] text-wizard-gold mb-1">✦ Daily Reward</p>
+              <p className="font-pixel text-[7px] text-gray-500">
+                Claim 6 $WIZPER every 24h
+              </p>
+            </div>
+            <button
+              onClick={handleClaim}
+              disabled={claiming || claimed}
+              className="font-pixel text-[8px] px-4 py-2 border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border-wizard-gold/40 text-wizard-gold hover:bg-wizard-gold/10"
+            >
+              {claiming ? '✦ Claiming…' : claimed ? '✦ Claimed!' : '✦ Claim'}
+            </button>
+          </div>
+          {claimError && (
+            <p className="font-pixel text-[7px] text-red-400 mt-2">{claimError}</p>
+          )}
+          {claimed && (
+            <p className="font-pixel text-[7px] text-wizard-green mt-2">+6 $WIZPER added to your wallet!</p>
+          )}
+        </motion.div>
 
         {/* Sub-links */}
         <div className="flex gap-6 mt-8">
