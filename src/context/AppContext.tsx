@@ -216,6 +216,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             abi: parseAbi(WIZPER_ZK_ABI as unknown as string[]),
             functionName: 'submitCommitment',
             args: [commitment, expressionHash],
+            gas: BigInt(300_000),
           });
         } catch (err) {
           console.error('[Mint] ZK commitment failed:', err);
@@ -239,6 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
           abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
           functionName: 'payForMint',
+          gas: BigInt(200_000),
         });
         console.log('[Mint] Payment OK');
       } catch (err) {
@@ -254,6 +256,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           abi: parseAbi(WIZPER_NFT_ABI as unknown as string[]),
           functionName: 'mintExpression',
           args: [address, tokenURI, expressionHash, emotion],
+          gas: BigInt(500_000),
         });
         console.log('[Mint] NFT minted OK');
       } catch (err) {
@@ -284,6 +287,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
       abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
       functionName: 'payForLink',
+      gas: BigInt(200_000),
     });
   }, [address, writeContractAsync]);
 
@@ -294,6 +298,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
       abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
       functionName: 'claimDailyReward',
+      gas: BigInt(200_000),
     });
   }, [address, writeContractAsync]);
 
