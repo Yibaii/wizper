@@ -27,23 +27,29 @@ export default function CreateForm() {
 
   const emotion = text.trim() ? detectEmotion(text) : 'confusion';
 
-  function handleTransform() {
+  async function handleTransform() {
     if (!canSubmit) return;
     setPhase('transforming');
 
     const id = `c-${Date.now()}`;
     setConfessionId(id);
-    addConfession({
-      id,
-      text: text.trim(),
-      emotion,
-      minted: false,
-      createdAt: new Date().toISOString(),
-      linkedIds: [],
-      pendingLinkIds: [],
-    });
 
-    setTimeout(() => setPhase('result'), 1500);
+    try {
+      await addConfession({
+        id,
+        text: text.trim(),
+        emotion,
+        minted: false,
+        createdAt: new Date().toISOString(),
+        linkedIds: [],
+        pendingLinkIds: [],
+      });
+      setTimeout(() => setPhase('result'), 1500);
+    } catch (err) {
+      console.error('Failed to save expression:', err);
+      alert('Failed to save — please make sure your wallet is connected');
+      setPhase('writing');
+    }
   }
 
   async function handleMint() {

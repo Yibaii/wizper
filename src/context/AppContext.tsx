@@ -124,7 +124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addConfession = useCallback(async (c: Confession) => {
     if (!address) return;
 
-    await fetch('/api/expressions', {
+    const res = await fetch('/api/expressions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -135,9 +135,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
     });
 
-    // Optimistic update for "mine"
-    setMyExpressions(prev => [c, ...prev]);
-  }, [address]);
+    if (!res.ok) {
+      console.error('Failed to save expression:', await res.text());
+      throw new Error('Failed to save expression');
+    }
+
+    // Refresh from DB to ensure consistency
+    await refreshMine();
+  }, [address, refreshMine]);
 
   const deleteExpression = useCallback(async (id: string) => {
     if (!address) return;
@@ -172,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       // Step 1: Upload wizard image + metadata to IPFS
+      console.log('[Mint] Step 1/5: Uploading to IPFS...');
       let tokenURI: string;
 
       const svgString = svgElement
@@ -187,8 +193,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         tokenURI = data.tokenURI;
+        console.log('[Mint] IPFS upload OK:', tokenURI);
       } else {
-        console.warn('IPFS upload failed, using data URI fallback');
+        console.warn('[Mint] IPFS upload failed, using data URI fallback');
         tokenURI = `data:application/json,${encodeURIComponent(JSON.stringify({
           name: `Wizper Spirit #${id}`,
           description: `Emotion: ${emotion}`,
@@ -199,15 +206,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const expressionHash = keccak256(toBytes(text));
 
       if (CONTRACT_ADDRESSES.wizperZK) {
+        console.log('[Mint] Step 2/5: Submitting ZK commitment...');
         const nullifier = generateNullifier();
         const commitment = createCommitment(expressionHash, nullifier, address);
 
-        await writeContractAsync({
-          address: CONTRACT_ADDRESSES.wizperZK as `0x${string}`,
-          abi: parseAbi(WIZPER_ZK_ABI as unknown as string[]),
-          functionName: 'submitCommitment',
-          args: [commitment, expressionHash],
-        });
+        try {
+          await writeContractAsync({
+            address: CONTRACT_ADDRESSES.wizperZK as `0x${string}`,
+            abi: parseAbi(WIZPER_ZK_ABI as unknown as string[]),
+            functionName: 'submitCommitment',
+            args: [commitment, expressionHash],
+          });
+        } catch (err) {
+          console.error('[Mint] ZK commitment failed:', err);
+          throw new Error('ZK commitment failed — check wallet and try again');
+        }
 
         saveNullifier({
           expressionId: id,
@@ -216,24 +229,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
           commitment,
           createdAt: new Date().toISOString(),
         });
+        console.log('[Mint] ZK commitment OK');
       }
 
       // Step 3: Pay with WIZPER token (burn)
-      await writeContractAsync({
-        address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
-        abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
-        functionName: 'payForMint',
-      });
+      console.log('[Mint] Step 3/5: Paying mint cost (5 WIZPER)...');
+      try {
+        await writeContractAsync({
+          address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
+          abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
+          functionName: 'payForMint',
+        });
+        console.log('[Mint] Payment OK');
+      } catch (err) {
+        console.error('[Mint] Payment failed:', err);
+        throw new Error('Payment failed — make sure you have enough WIZPER tokens');
+      }
 
       // Step 4: Mint NFT with IPFS tokenURI
-      await writeContractAsync({
-        address: CONTRACT_ADDRESSES.wizperNFT as `0x${string}`,
-        abi: parseAbi(WIZPER_NFT_ABI as unknown as string[]),
-        functionName: 'mintExpression',
-        args: [address, tokenURI, expressionHash, emotion],
-      });
+      console.log('[Mint] Step 4/5: Minting NFT on-chain...');
+      try {
+        await writeContractAsync({
+          address: CONTRACT_ADDRESSES.wizperNFT as `0x${string}`,
+          abi: parseAbi(WIZPER_NFT_ABI as unknown as string[]),
+          functionName: 'mintExpression',
+          args: [address, tokenURI, expressionHash, emotion],
+        });
+        console.log('[Mint] NFT minted OK');
+      } catch (err) {
+        console.error('[Mint] NFT mint failed:', err);
+        throw new Error('NFT mint failed on-chain');
+      }
 
       // Step 5: Update database
+      console.log('[Mint] Step 5/5: Updating database...');
       await fetch('/api/expressions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -242,6 +271,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Refresh both feeds
       await Promise.all([refreshFeed(), refreshMine()]);
+      console.log('[Mint] Complete!');
     } finally {
       setIsMinting(false);
     }
