@@ -53,12 +53,30 @@ export function detectEmotion(text: string): Emotion {
   };
 
   const keywords: Record<Emotion, string[]> = {
-    anger: ['angry', 'furious', 'rage', 'hate', 'scream', 'mad', 'frustrated'],
-    sadness: ['sad', 'cry', 'tears', 'lonely', 'miss', 'depressed', 'grief', 'alone'],
-    joy: ['happy', 'smile', 'laugh', 'amazing', 'wonderful', 'joy', 'glad', 'bright', 'courage'],
-    fear: ['afraid', 'scared', 'fear', 'anxiety', 'worry', 'nervous', 'dread', 'panic'],
-    love: ['love', 'heart', 'crush', 'letter', 'kiss', 'adore', 'romance', 'dear'],
-    confusion: ['confused', 'lost', 'why', 'spinning', 'understand', 'unsure', 'uncertain'],
+    anger: [
+      'angry', 'furious', 'rage', 'hate', 'scream', 'mad', 'frustrated',
+      '生气', '愤怒', '烦', '恨', '讨厌', '暴怒', '发火', '气死', '受不了', '操', '妈的', '恼火', '憎恨', '怒', '火大', '崩溃',
+    ],
+    sadness: [
+      'sad', 'cry', 'tears', 'lonely', 'miss', 'depressed', 'grief', 'alone',
+      '难过', '伤心', '哭', '孤独', '寂寞', '想念', '思念', '抑郁', '悲伤', '心痛', '落泪', '眼泪', '失落', '沮丧', '痛苦', '遗憾', '可惜',
+    ],
+    joy: [
+      'happy', 'smile', 'laugh', 'amazing', 'wonderful', 'joy', 'glad', 'bright', 'courage',
+      '开心', '快乐', '高兴', '笑', '幸福', '太棒', '真好', '美好', '欢乐', '兴奋', '激动', '满足', '感恩', '赞', '哈哈', '嘻嘻', '耶', '喜悦', '勇气',
+    ],
+    fear: [
+      'afraid', 'scared', 'fear', 'anxiety', 'worry', 'nervous', 'dread', 'panic',
+      '害怕', '恐惧', '焦虑', '担心', '紧张', '不安', '慌', '恐慌', '吓', '胆怯', '惶恐', '忐忑', '心慌', '怕',
+    ],
+    love: [
+      'love', 'heart', 'crush', 'letter', 'kiss', 'adore', 'romance', 'dear',
+      '爱', '喜欢', '心动', '暗恋', '表白', '亲', '想你', '甜蜜', '温柔', '心爱', '深爱', '宝贝', '亲爱', '情书', '浪漫', '牵挂',
+    ],
+    confusion: [
+      'confused', 'lost', 'why', 'spinning', 'understand', 'unsure', 'uncertain',
+      '迷茫', '困惑', '不懂', '为什么', '搞不清', '纠结', '矛盾', '不确定', '迷失', '混乱', '茫然', '懵',
+    ],
   };
 
   for (const [emotion, words] of Object.entries(keywords)) {
