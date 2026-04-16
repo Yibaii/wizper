@@ -31,7 +31,17 @@
       "Bash(npx tsc:*)",
       "WebFetch(domain:docs.semaphore.pse.dev)",
       "Bash(node --experimental-vm-modules -e ':*)",
-      "Bash(node scripts/debug-msg-mismatch.mjs)"
+      "Bash(node scripts/debug-msg-mismatch.mjs)",
+      "Bash(pnpm prisma:*)",
+      "Bash(node -e ':*)",
+      "Bash(curl -s -X POST http://localhost:3000/api/emotion -H \"Content-Type: application/json\" -d '{\"text\":\"Coachella is sooo excited!!\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/emotion -H \"Content-Type: application/json\" -d '{\"text\":\"今天真的太难过了\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/emotion -H \"Content-Type: application/json\" -d '{\"text\":\"今天太开心啦哈哈哈\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/emotion -H \"Content-Type: application/json\" -d '{\"text\":\"I am so angry right now\"}')",
+      "Bash(python3 -c \"import json, sys; d=json.load\\(sys.stdin\\); print\\(f'count: {len\\(d\\)}'\\); [print\\(f\\\\\"  {r['id'][:20]} emotion={r['emotion']} minted={r['minted']} hidden={r.get\\('hidden'\\)} tokenId={r.get\\('tokenId'\\)} createdAt={r['createdAt'][:19]}\\\\\"\\) for r in d[:10]]\")",
+      "Bash(node -e 'console.log\\(process.argv[1]\\)' 0x04DF...a230)",
+      "Bash(curl -s \"http://localhost:3000/api/expressions/mine?owner=$\\(node -e 'console.log\\(process.argv[1]\\)' 0x04DF...a230 || echo '0x04DF'\\)\")",
+      "Bash(node scripts/debug-expression-write.mjs)"
     ]
   }
 }

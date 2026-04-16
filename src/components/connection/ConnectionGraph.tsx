@@ -73,11 +73,19 @@ export default function ConnectionGraph({ confessions, links }: Props) {
       };
     });
 
-    edgesRef.current = links.map(l => ({
-      from: l.fromId,
-      to: l.toId,
-      status: l.status,
-    }));
+    // Dedupe bidirectional pairs: links are directional on-chain but
+    // the graph treats them as undirected. A confirmed link supersedes
+    // a pending one between the same pair.
+    const edgeByPair = new Map<string, Edge>();
+    for (const l of links) {
+      const key = l.fromId < l.toId ? `${l.fromId}|${l.toId}` : `${l.toId}|${l.fromId}`;
+      const existing = edgeByPair.get(key);
+      const incoming: Edge = { from: l.fromId, to: l.toId, status: l.status };
+      if (!existing || (existing.status === 'pending' && incoming.status === 'confirmed')) {
+        edgeByPair.set(key, incoming);
+      }
+    }
+    edgesRef.current = [...edgeByPair.values()];
   }, [confessions, links]);
 
   useEffect(() => {

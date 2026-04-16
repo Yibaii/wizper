@@ -14,32 +14,83 @@ export async function GET() {
   return NextResponse.json(expressions);
 }
 
-// POST /api/expressions — Create new expression (saved to DB, not minted)
+// POST /api/expressions — Create new expression.
+//
+// Back-compat: the old flow POSTed with {id, text, emotion, owner} to create
+// an un-minted draft; a subsequent PATCH would set minted=true + tokenURI.
+//
+// New anonymous flow POSTs the full minted record in one go with
+// {id, text, emotion, owner: stealthAddress, minted: true, tokenURI, txHash}.
+// Both shapes are accepted — extra fields are stored when present.
 export async function POST(req: NextRequest) {
-  const { id, text, emotion, owner } = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { id, text, emotion, owner, minted, tokenId, tokenURI, txHash } = body;
 
   if (!id || !text || !emotion || !owner) {
-    return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    return NextResponse.json({ error: 'Missing fields', got: { id, text: !!text, emotion, owner } }, { status: 400 });
   }
 
-  const expression = await prisma.expression.create({
-    data: {
-      id,
-      text,
-      emotion,
-      owner: owner.toLowerCase(),
-    },
-  });
+  const data: {
+    id: string;
+    text: string;
+    emotion: string;
+    owner: string;
+    minted?: boolean;
+    mintedAt?: Date;
+    tokenId?: string;
+    tokenURI?: string;
+    txHash?: string;
+  } = {
+    id,
+    text,
+    emotion,
+    owner: String(owner).toLowerCase(),
+  };
+  if (minted) {
+    data.minted = true;
+    data.mintedAt = new Date();
+  }
+  if (tokenId) data.tokenId = String(tokenId);
+  if (tokenURI) data.tokenURI = tokenURI;
+  if (txHash) data.txHash = txHash;
 
-  return NextResponse.json(expression);
+  try {
+    const expression = await prisma.expression.create({ data });
+    return NextResponse.json(expression);
+  } catch (err) {
+    console.error('[/api/expressions POST] prisma error:', err);
+    console.error('  payload:', JSON.stringify(data));
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
 
-// PATCH /api/expressions — Update expression (mint, hide)
+// PATCH /api/expressions — Update expression (mint, hide).
+//
+// Hide/unhide requires an owner match: the DB cache is public, but we don't
+// want arbitrary callers to flip `hidden` on someone else's spirit. The
+// check is: if `hidden` is in the payload, the caller must send `owner` and
+// it must match the record's `owner`. This is a client-side cache guard,
+// not a cryptographic proof — the real source of truth remains on-chain.
 export async function PATCH(req: NextRequest) {
-  const { id, minted, hidden, tokenURI, txHash } = await req.json();
+  const { id, minted, hidden, tokenId, tokenURI, txHash, owner } = await req.json();
 
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+  }
+
+  if (hidden !== undefined) {
+    if (!owner) {
+      return NextResponse.json({ error: 'owner required to change hidden' }, { status: 400 });
+    }
+    const existing = await prisma.expression.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (existing.owner !== owner.toLowerCase()) {
+      return NextResponse.json({ error: 'Not your expression' }, { status: 403 });
+    }
   }
 
   const data: Record<string, unknown> = {};
@@ -48,6 +99,7 @@ export async function PATCH(req: NextRequest) {
     data.mintedAt = new Date();
   }
   if (hidden !== undefined) data.hidden = hidden;
+  if (tokenId) data.tokenId = String(tokenId);
   if (tokenURI) data.tokenURI = tokenURI;
   if (txHash) data.txHash = txHash;
 

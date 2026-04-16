@@ -13,7 +13,8 @@ model Expression {
   emotion   String   // anger | sadness | joy | fear | confusion
   minted    Boolean  @default(false)
   hidden    Boolean  @default(false)
-  owner     String   // wallet address (lowercase)
+  owner     String   // stealth address (new flow) or main wallet (legacy)
+  tokenId   String?  // ERC-721 token id from WizperAnonymous, decimal string
   tokenURI  String?  // IPFS URI (set after mint)
   txHash    String?  // mint transaction hash
   createdAt DateTime @default(now())

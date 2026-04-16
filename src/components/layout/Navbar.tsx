@@ -10,6 +10,7 @@ import PotionButton from '@/components/ui/PotionButton';
 
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
+  { href: '/join', label: 'Join' },
   { href: '/create', label: 'Create' },
   { href: '/feed', label: 'Feed' },
   { href: '/my', label: 'Mine' },
@@ -18,7 +19,8 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { wallet } = useApp();
+  const { wallet, inboundRequests } = useApp();
+  const inboundCount = inboundRequests.length;
   const { time, toggle: toggleTime } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showWalletPicker, setShowWalletPicker] = useState(false);
@@ -38,20 +40,31 @@ export default function Navbar() {
 
         {/* Desktop links */}
         <div className="hidden md:flex items-center gap-6">
-          {NAV_LINKS.map(link => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                'font-pixel text-[12px] transition-all duration-200',
-                pathname === link.href
-                  ? 'text-wizard-cyan text-glow-cyan'
-                  : 'text-gray-400 hover:text-wizard-violet',
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map(link => {
+            const showBadge = link.href === '/connections' && inboundCount > 0;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  'font-pixel text-[12px] transition-all duration-200 relative inline-flex items-center',
+                  pathname === link.href
+                    ? 'text-wizard-cyan text-glow-cyan'
+                    : 'text-gray-400 hover:text-wizard-violet',
+                )}
+              >
+                {link.label}
+                {showBadge && (
+                  <span
+                    className="ml-1 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 font-pixel text-[8px] text-wizard-dark bg-wizard-gold border border-wizard-gold animate-pulse-glow"
+                    title={`${inboundCount} inbound link request(s)`}
+                  >
+                    {inboundCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
 
         {/* Wallet + Theme toggle + mobile toggle */}
@@ -109,21 +122,29 @@ export default function Navbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden border-t border-wizard-violet/20 bg-wizard-dark/95 backdrop-blur-md px-4 py-4 space-y-3">
-          {NAV_LINKS.map(link => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMobileOpen(false)}
-              className={cn(
-                'block font-pixel text-[10px] py-1',
-                pathname === link.href
-                  ? 'text-wizard-cyan text-glow-cyan'
-                  : 'text-gray-400',
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map(link => {
+            const showBadge = link.href === '/connections' && inboundCount > 0;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  'block font-pixel text-[10px] py-1',
+                  pathname === link.href
+                    ? 'text-wizard-cyan text-glow-cyan'
+                    : 'text-gray-400',
+                )}
+              >
+                {link.label}
+                {showBadge && (
+                  <span className="ml-2 inline-block min-w-[14px] h-[14px] px-1 font-pixel text-[8px] text-wizard-dark bg-wizard-gold text-center">
+                    {inboundCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
     </nav>

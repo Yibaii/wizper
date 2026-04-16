@@ -1,11 +1,20 @@
 'use client';
 
+import { useMemo } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
 import ConnectionGraph from '@/components/connection/ConnectionGraph';
+import { truncate } from '@/lib/utils';
 
 export default function ConnectionsPage() {
-  const { feedExpressions, myExpressions, links } = useApp();
+  const { feedExpressions, myExpressions, links, inboundRequests } = useApp();
+
+  // Build a lookup for rendering inbound request details.
+  const allMap = useMemo(
+    () => new Map([...feedExpressions, ...myExpressions].map(c => [c.id, c])),
+    [feedExpressions, myExpressions],
+  );
 
   // Only minted expressions appear in the connection graph, deduplicated by id
   const allMinted = [...feedExpressions, ...myExpressions].filter(c => c.minted);
@@ -16,8 +25,17 @@ export default function ConnectionsPage() {
     return true;
   });
 
-  const confirmedCount = links.filter(l => l.status === 'confirmed').length;
-  const pendingCount = links.filter(l => l.status === 'pending').length;
+  // Dedupe bidirectional links before counting so the user sees pairs, not edges.
+  const pairStatus = new Map<string, 'pending' | 'confirmed'>();
+  for (const l of links) {
+    const key = l.fromId < l.toId ? `${l.fromId}|${l.toId}` : `${l.toId}|${l.fromId}`;
+    const prev = pairStatus.get(key);
+    if (!prev || (prev === 'pending' && l.status === 'confirmed')) {
+      pairStatus.set(key, l.status);
+    }
+  }
+  const confirmedCount = [...pairStatus.values()].filter(s => s === 'confirmed').length;
+  const pendingCount = [...pairStatus.values()].filter(s => s === 'pending').length;
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col px-4 py-10 max-w-6xl mx-auto">
@@ -55,6 +73,41 @@ export default function ConnectionsPage() {
             </span>
           </div>
         </div>
+
+        {/* Inbound requests — someone asked to link to my spirit */}
+        {inboundRequests.length > 0 && (
+          <div className="border border-wizard-gold/40 bg-wizard-gold/5 p-3 mb-4">
+            <div className="font-pixel text-[9px] text-wizard-gold mb-2">
+              ✦ {inboundRequests.length} inbound link request{inboundRequests.length > 1 ? 's' : ''}
+            </div>
+            <ul className="space-y-1">
+              {inboundRequests.map(req => {
+                const toSpirit = allMap.get(req.toId);
+                const fromSpirit = allMap.get(req.fromId);
+                return (
+                  <li key={req.id} className="flex items-center gap-2 font-pixel text-[8px] text-gray-300">
+                    <span className="text-wizard-cyan/70">
+                      {fromSpirit ? truncate(fromSpirit.text, 28) : req.fromId.slice(0, 8)}
+                    </span>
+                    <span className="text-gray-500">→</span>
+                    <span className="text-wizard-violet/80">
+                      {toSpirit ? truncate(toSpirit.text, 28) : req.toId.slice(0, 8)}
+                    </span>
+                    <span className="flex-1" />
+                    {toSpirit && (
+                      <Link
+                        href={`/confession/${toSpirit.id}`}
+                        className="text-wizard-gold hover:text-white border border-wizard-gold/40 px-2 py-0.5 hover:bg-wizard-gold/10"
+                      >
+                        Open
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         {/* Info box */}
         <div className="border border-wizard-violet/20 bg-wizard-purple/20 p-3 mb-2">

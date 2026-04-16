@@ -18,16 +18,26 @@ export async function POST(req: NextRequest) {
     const imageUpload = await pinata.upload.public.file(svgFile);
     const imageURI = `ipfs://${imageUpload.cid}`;
 
-    // Step 2: Build NFT metadata (ERC-721 standard)
+    // Step 2: Build NFT metadata (ERC-721 standard).
+    // Full expression text is stored in IPFS metadata. This is the sole
+    // source of truth for the text — nothing on-chain, no DB dependency.
+    // Text is therefore permanent and public, but has no link to any wallet.
     const metadata = {
       name: `Wizper Spirit #${wizardId}`,
-      description: `An anonymous expression transformed into a magical wizard spirit. Emotion: ${emotion}`,
+      description: text,
       image: imageURI,
       attributes: [
         { trait_type: 'Emotion', value: emotion },
-        { trait_type: 'Text Length', value: text.length },
         { trait_type: 'Created', value: new Date().toISOString() },
       ],
+      // Custom namespaced field to make the expression easy for our own
+      // app to consume without relying on parsing `description` (which
+      // third-party marketplaces use as a free-form caption).
+      wizper: {
+        version: 1,
+        text,
+        emotion,
+      },
     };
 
     // Step 3: Upload metadata JSON to IPFS

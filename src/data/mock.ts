@@ -5,6 +5,8 @@ export interface Confession {
   text: string;
   emotion: Emotion;
   minted: boolean;
+  hidden?: boolean;
+  tokenId?: string;     // decimal string (on-chain ERC-721 id)
   createdAt: string;
   linkedIds: string[];
   pendingLinkIds: string[];

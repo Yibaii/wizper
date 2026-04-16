@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import ScrollPanel from '@/components/ui/ScrollPanel';
@@ -18,24 +18,37 @@ function toEmotion(x: unknown): Emotion {
     : 'confusion';
 }
 
-
 type Phase = 'writing' | 'transforming' | 'result';
+type Step = 'idle' | 'uploading' | 'proving' | 'relaying' | 'confirming';
+
+const STEP_LABEL: Record<Step, string> = {
+  idle: '',
+  uploading: 'Pinning to IPFS…',
+  proving: 'Generating zero-knowledge proof…',
+  relaying: 'Submitting through relayer…',
+  confirming: 'Waiting for on-chain confirmation…',
+};
 
 export default function CreateForm() {
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>('writing');
   const [minted, setMinted] = useState(false);
-  const [confessionId, setConfessionId] = useState<string>('');
+  const [step, setStep] = useState<Step>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
   const wizardRef = useRef<HTMLDivElement>(null);
-  const { addConfession, mintExpressionNFT, wallet, isMinting } = useApp();
+  const { mintSpiritAnonymous, identity, isMinting } = useApp();
   const router = useRouter();
 
   const maxLen = 280;
   const canSubmit = text.trim().length >= 4 && text.length <= maxLen;
 
-
   const [emotion, setEmotion] = useState<Emotion>('confusion');
   const [emotionLoading, setEmotionLoading] = useState(false);
+
+  // Defer identity-dependent UI to after mount to avoid hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   async function fetchEmotion(text: string) {
     if (!text.trim()) {
@@ -50,7 +63,6 @@ export default function CreateForm() {
         body: JSON.stringify({ text }),
       });
       const result = await resp.json();
-      // result: { label: "joy", score: 0.98 }  (already mapped server-side)
       setEmotion(toEmotion(result?.label));
     } catch {
       setEmotion('confusion');
@@ -59,7 +71,6 @@ export default function CreateForm() {
     }
   }
 
-  // 自动检测情绪
   function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setText(e.target.value);
     fetchEmotion(e.target.value);
@@ -67,42 +78,89 @@ export default function CreateForm() {
 
   async function handleTransform() {
     if (!canSubmit || emotionLoading) return;
+    if (!identity.identity || identity.isMember !== true) {
+      router.push('/join');
+      return;
+    }
+
+    setError(null);
+    setTxHash(null);
     setPhase('transforming');
 
+    // Progress tracking: we flip setStep during the mint by wrapping fetch.
+    // The underlying `mintSpiritAnonymous` does upload → proof → relay → wait
+    // in sequence; we approximate via timers + the isMinting flag. A more
+    // accurate version would thread a progress callback through — Phase 1.x.
+    setStep('uploading');
     const id = `c-${Date.now()}`;
-    setConfessionId(id);
+    // Let the user briefly see the "uploading" label before "proving" kicks in.
+    const stepTimer1 = setTimeout(() => setStep('proving'), 800);
+    const stepTimer2 = setTimeout(() => setStep('relaying'), 3000);
+    const stepTimer3 = setTimeout(() => setStep('confirming'), 5000);
 
     try {
-      await addConfession({
+      const svgEl = wizardRef.current?.querySelector('svg') ?? null;
+      const { txHash: hash } = await mintSpiritAnonymous({
         id,
         text: text.trim(),
         emotion,
-        minted: false,
-        createdAt: new Date().toISOString(),
-        linkedIds: [],
-        pendingLinkIds: [],
+        svgElement: svgEl,
       });
-      setTimeout(() => setPhase('result'), 1500);
+      setTxHash(hash);
+      setMinted(true);
+      setPhase('result');
     } catch (err) {
-      console.error('Failed to save expression:', err);
-      alert('Failed to save — please make sure your wallet is connected');
+      console.error('[create] mint failed:', err);
+      setError((err as Error).message || 'Mint failed');
       setPhase('writing');
+    } finally {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+      clearTimeout(stepTimer3);
+      setStep('idle');
     }
   }
 
-  async function handleMint() {
-    if (!wallet.connected) {
-      wallet.connect();
-      return;
+  // ─── Identity gate ─────────────────────────────────────────
+  // Shown above the form when the user isn't ready to mint anonymously.
+  const identityBanner = (() => {
+    if (!mounted) return null;
+    if (!identity.identity) {
+      return (
+        <div className="mb-4 border border-wizard-violet/40 bg-wizard-violet/10 p-3 text-[10px] leading-snug">
+          <div className="font-pixel text-wizard-violet mb-1">✦ Anonymous identity required</div>
+          <p className="mb-2">
+            Wizper posts are signed by a Semaphore identity, not your wallet. You need one to mint.
+          </p>
+          <PotionButton variant="violet" small onClick={() => router.push('/join')}>
+            Set up identity
+          </PotionButton>
+        </div>
+      );
     }
-    try {
-      const svgEl = wizardRef.current?.querySelector('svg') ?? null;
-      await mintExpressionNFT(confessionId, text.trim(), emotion, svgEl);
-      setMinted(true);
-    } catch (err) {
-      console.error('Mint failed:', err);
+    if (identity.isMember === false) {
+      return (
+        <div className="mb-4 border border-wizard-gold/40 bg-wizard-gold/10 p-3 text-[10px] leading-snug">
+          <div className="font-pixel text-wizard-gold mb-1">✦ Join the group first</div>
+          <p className="mb-2">
+            You have an identity but haven&apos;t joined the Wizper group on-chain yet.
+            One tx from your main wallet is required.
+          </p>
+          <PotionButton variant="gold" small onClick={() => router.push('/join')}>
+            Finish joining
+          </PotionButton>
+        </div>
+      );
     }
-  }
+    if (identity.isMember === null) {
+      return (
+        <div className="mb-4 border border-wizard-cyan/20 p-3 text-[10px]">
+          <span className="font-pixel text-wizard-cyan/70">Checking group membership…</span>
+        </div>
+      );
+    }
+    return null;
+  })();
 
   return (
     <div className="w-full max-w-xl mx-auto">
@@ -118,6 +176,8 @@ export default function CreateForm() {
             <div className="mb-4">
               <ZKShield />
             </div>
+
+            {identityBanner}
 
             <ScrollPanel className="mb-4">
               <textarea
@@ -142,15 +202,21 @@ export default function CreateForm() {
               <PotionButton
                 variant="violet"
                 onClick={handleTransform}
-                disabled={!canSubmit}
+                disabled={!canSubmit || isMinting}
               >
-                ✦ Transform into Spirit
+                {isMinting ? '✦ Minting…' : '✦ Transform into Spirit'}
               </PotionButton>
             </div>
+
+            {error && (
+              <p className="mt-3 font-pixel text-[9px] text-wizard-ember text-center break-all">
+                {error}
+              </p>
+            )}
           </motion.div>
         )}
 
-        {/* ---- Phase 2: Transforming Animation ---- */}
+        {/* ---- Phase 2: Transforming ---- */}
         {phase === 'transforming' && (
           <motion.div
             key="transforming"
@@ -160,26 +226,18 @@ export default function CreateForm() {
             exit={{ opacity: 0 }}
           >
             <div className="relative">
-              {/* Sparkle ring */}
               {[...Array(8)].map((_, i) => (
                 <motion.div
                   key={i}
                   className="absolute w-2 h-2 bg-wizard-violet rounded-full"
-                  style={{
-                    left: '50%',
-                    top: '50%',
-                  }}
+                  style={{ left: '50%', top: '50%' }}
                   animate={{
                     x: [0, Math.cos((i * Math.PI) / 4) * 60],
                     y: [0, Math.sin((i * Math.PI) / 4) * 60],
                     scale: [0, 1.5, 0],
                     opacity: [0, 1, 0],
                   }}
-                  transition={{
-                    duration: 1.2,
-                    repeat: Infinity,
-                    delay: i * 0.1,
-                  }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.1 }}
                 />
               ))}
               <motion.div
@@ -191,6 +249,9 @@ export default function CreateForm() {
             </div>
             <p className="font-pixel text-[10px] text-wizard-violet mt-6 text-glow-violet">
               ✦ Transforming your emotions…
+            </p>
+            <p className="font-pixel text-[8px] text-wizard-cyan/70 mt-2">
+              {STEP_LABEL[step]}
             </p>
           </motion.div>
         )}
@@ -222,24 +283,35 @@ export default function CreateForm() {
             </div>
 
             <div className="flex gap-4 mb-4">
-              <PotionButton variant="gold" onClick={handleMint} disabled={minted || isMinting}>
-                {isMinting ? '✦ Minting…' : minted ? '✦ NFT Minted' : '✦ Mint NFT'}
-              </PotionButton>
               <PotionButton
                 variant="cyan"
                 onClick={() => router.push('/feed')}
               >
                 ✦ View Feed
               </PotionButton>
+              <PotionButton
+                variant="violet"
+                onClick={() => router.push('/my')}
+              >
+                ✦ My Spirits
+              </PotionButton>
             </div>
 
-            {minted && (
+            {minted && txHash && (
               <motion.p
-                className="font-pixel text-[8px] text-wizard-gold text-glow-gold"
+                className="font-pixel text-[8px] text-wizard-gold text-glow-gold break-all px-4 text-center"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
-                NFT minted! Content ownership confirmed on-chain
+                NFT minted anonymously. tx:&nbsp;
+                <a
+                  href={`https://sepolia.basescan.org/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  {txHash.slice(0, 10)}…
+                </a>
               </motion.p>
             )}
           </motion.div>

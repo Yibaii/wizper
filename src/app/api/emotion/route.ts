@@ -13,9 +13,13 @@ const EN_LABEL_MAP: Record<string, Emotion> = {
   neutral: 'confusion',
 };
 
-// Chinese: Johnson8187/Chinese-Emotion (8 labels, traditional Chinese)
+// Chinese: Johnson8187/Chinese-Emotion (8 labels, traditional Chinese).
+// The HF Inference Providers router returns LABEL_N (the config.json id2label
+// is generic LABEL_0..7); the original README maps those to Chinese names in
+// order. We accept both so the code survives either serving mode.
 const ZH_MODEL = 'Johnson8187/Chinese-Emotion';
 const ZH_LABEL_MAP: Record<string, Emotion> = {
+  // Chinese names (kept for completeness if HF ever serves them)
   開心語調: 'joy',
   憤怒語調: 'anger',
   悲傷語調: 'sadness',
@@ -24,6 +28,15 @@ const ZH_LABEL_MAP: Record<string, Emotion> = {
   驚奇語調: 'joy',
   疑問語調: 'confusion',
   平淡語氣: 'confusion',
+  // LABEL_N aliases (current router behavior)
+  LABEL_0: 'confusion', // 平淡
+  LABEL_1: 'fear',      // 關切
+  LABEL_2: 'joy',       // 開心
+  LABEL_3: 'anger',     // 憤怒
+  LABEL_4: 'sadness',   // 悲傷
+  LABEL_5: 'confusion', // 疑問
+  LABEL_6: 'joy',       // 驚奇
+  LABEL_7: 'anger',     // 厭惡
 };
 
 type HFScore = { label: string; score: number };
@@ -34,8 +47,11 @@ function isChinese(text: string): boolean {
 }
 
 async function classify(model: string, text: string): Promise<HFScore[] | null> {
+  // HuggingFace retired the free `api-inference.huggingface.co` endpoint in
+  // late 2024. The replacement is the Inference Providers router, which
+  // keeps the same request/response shape.
   const resp = await fetch(
-    `https://api-inference.huggingface.co/models/${model}`,
+    `https://router.huggingface.co/hf-inference/models/${model}`,
     {
       method: 'POST',
       headers: {
@@ -45,6 +61,12 @@ async function classify(model: string, text: string): Promise<HFScore[] | null> 
       body: JSON.stringify({ inputs: text }),
     }
   );
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.warn(`[emotion] HF ${resp.status} from ${model}:`, body.slice(0, 300));
+    return null;
+  }
 
   const raw = await resp.json();
 
