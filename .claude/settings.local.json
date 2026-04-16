@@ -19,7 +19,14 @@
       "Bash(curl -s -X POST http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"text\":\"Minted expression\",\"emotion\":\"love\",\"owner\":\"0xabc123\"}')",
       "Bash(curl -s -X PATCH http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"minted\":true,\"tokenURI\":\"ipfs://test\",\"txHash\":\"0xdeadbeef\"}')",
       "Bash(curl -s -X PATCH http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"hidden\":true}')",
-      "Bash(curl -s -X DELETE http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"owner\":\"0xabc123\"}')"
+      "Bash(curl -s -X DELETE http://localhost:3000/api/expressions -H 'Content-Type: application/json' -d '{\"id\":\"test-002\",\"owner\":\"0xabc123\"}')",
+      "Read(//private/tmp/**)",
+      "Bash(python3 -c ':*)",
+      "Bash(pip3 install:*)",
+      "Bash(sed 's/ws4.cell\\(row=r, column=1\\).font = ws4.cell\\(row=r, column=1\\).font or black_font/pass/' create_midterm3.py)",
+      "Bash(python3 create_midterm3_fixed.py)",
+      "Bash(python3 \"/Users/marvin/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/f3e30aeb-cb38-4445-a826-1b80e7a41a04/754d86c8-6438-494d-b6e4-09b7325eae7a/skills/xlsx/scripts/recalc.py\" /Users/marvin/Downloads/Midterm3_Solutions.xlsx)",
+      "Bash(python3)"
     ]
   }
 }

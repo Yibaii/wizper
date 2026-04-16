@@ -54,27 +54,39 @@ export function detectEmotion(text: string): Emotion {
 
   const keywords: Record<Emotion, string[]> = {
     anger: [
-      'angry', 'furious', 'rage', 'hate', 'scream', 'mad', 'frustrated',
+      // English
+      'angry', 'furious', 'rage', 'hate', 'scream', 'mad', 'frustrated', 'irritated', 'annoyed', 'resentful', 'outraged', 'offended', 'hostile', 'enraged', 'agitated', 'cross', 'fuming', 'provoked', 'exasperated', 'indignant', 'disgusted', 'vengeful', 'bitter', 'wrath', 'incensed', 'infuriated', 'pissed', 'upset', 'boiling', 'exploding', 'snapped',
+      // 中文
       '生气', '愤怒', '烦', '恨', '讨厌', '暴怒', '发火', '气死', '受不了', '操', '妈的', '恼火', '憎恨', '怒', '火大', '崩溃',
     ],
     sadness: [
-      'sad', 'cry', 'tears', 'lonely', 'miss', 'depressed', 'grief', 'alone',
+      // English
+      'sad', 'cry', 'tears', 'lonely', 'miss', 'depressed', 'grief', 'alone', 'sorrow', 'down', 'blue', 'unhappy', 'mourn', 'gloomy', 'heartbroken', 'melancholy', 'despair', 'hopeless', 'regret', 'disappointed', 'pain', 'weep', 'miserable', 'downcast', 'desolate', 'wretched', 'forlorn', 'dismal', 'broken', 'hurt', 'loss', 'yearn', 'longing',
+      // 中文
       '难过', '伤心', '哭', '孤独', '寂寞', '想念', '思念', '抑郁', '悲伤', '心痛', '落泪', '眼泪', '失落', '沮丧', '痛苦', '遗憾', '可惜',
     ],
     joy: [
-      'happy', 'smile', 'laugh', 'amazing', 'wonderful', 'joy', 'glad', 'bright', 'courage',
+      // English
+      'happy', 'smile', 'laugh', 'amazing', 'wonderful', 'joy', 'glad', 'bright', 'courage', 'delight', 'cheerful', 'excited', 'pleased', 'content', 'satisfied', 'ecstatic', 'elated', 'euphoric', 'grateful', 'thankful', 'blessed', 'optimistic', 'sunny', 'jubilant', 'merry', 'glee', 'overjoyed', 'thrilled', 'upbeat', 'bubbly', 'radiant', 'enjoy', 'yay', 'woohoo', 'awesome', 'fantastic', 'great', 'love it',
+      // 中文
       '开心', '快乐', '高兴', '笑', '幸福', '太棒', '真好', '美好', '欢乐', '兴奋', '激动', '满足', '感恩', '赞', '哈哈', '嘻嘻', '耶', '喜悦', '勇气',
     ],
     fear: [
-      'afraid', 'scared', 'fear', 'anxiety', 'worry', 'nervous', 'dread', 'panic',
+      // English
+      'afraid', 'scared', 'fear', 'anxiety', 'worry', 'nervous', 'dread', 'panic', 'terrified', 'frightened', 'apprehensive', 'alarmed', 'shocked', 'timid', 'horrified', 'startled', 'uneasy', 'paranoid', 'spooked', 'shaken', 'petrified', 'intimidated', 'coward', 'phobia', 'tremble', 'shiver', 'suspicious', 'worried', 'disturbed', 'restless',
+      // 中文
       '害怕', '恐惧', '焦虑', '担心', '紧张', '不安', '慌', '恐慌', '吓', '胆怯', '惶恐', '忐忑', '心慌', '怕',
     ],
     love: [
-      'love', 'heart', 'crush', 'letter', 'kiss', 'adore', 'romance', 'dear',
+      // English
+      'love', 'heart', 'crush', 'letter', 'kiss', 'adore', 'romance', 'dear', 'sweetheart', 'darling', 'beloved', 'affection', 'fond', 'cherish', 'devoted', 'passion', 'desire', 'sweet', 'honey', 'cuddle', 'hug', 'miss you', 'fall for', 'infatuated', 'admire', 'devotion', 'attachment', 'tender', 'caring', 'soulmate', 'relationship', 'dating', 'marry', 'married', 'fiance', 'fiancee', 'spouse', 'wife', 'husband',
+      // 中文
       '爱', '喜欢', '心动', '暗恋', '表白', '亲', '想你', '甜蜜', '温柔', '心爱', '深爱', '宝贝', '亲爱', '情书', '浪漫', '牵挂',
     ],
     confusion: [
-      'confused', 'lost', 'why', 'spinning', 'understand', 'unsure', 'uncertain',
+      // English
+      'confused', 'lost', 'why', 'spinning', 'understand', 'unsure', 'uncertain', 'puzzled', 'baffled', 'perplexed', 'bewildered', 'unclear', 'doubt', 'hesitate', 'ambiguous', 'vague', 'blurred', 'mixed up', 'disoriented', 'question', 'wonder', 'uncertainty', 'stuck', 'foggy', 'hazy', 'at a loss', 'don\'t get it', 'don\'t know',
+      // 中文
       '迷茫', '困惑', '不懂', '为什么', '搞不清', '纠结', '矛盾', '不确定', '迷失', '混乱', '茫然', '懵',
     ],
   };
