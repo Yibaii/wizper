@@ -42,14 +42,13 @@ export const EMOTION_LABELS: Record<Emotion, { en: string; icon: string }> = {
   sadness: { en: 'Sadness', icon: '💧' },
   joy: { en: 'Joy', icon: '✨' },
   fear: { en: 'Fear', icon: '👁' },
-  love: { en: 'Love', icon: '💜' },
   confusion: { en: 'Confusion', icon: '🌀' },
 };
 
 export function detectEmotion(text: string): Emotion {
   const lower = text.toLowerCase();
   const scores: Record<Emotion, number> = {
-    anger: 0, sadness: 0, joy: 0, fear: 0, love: 0, confusion: 0,
+    anger: 0, sadness: 0, joy: 0, fear: 0, confusion: 0,
   };
 
   const keywords: Record<Emotion, string[]> = {
@@ -76,12 +75,6 @@ export function detectEmotion(text: string): Emotion {
       'afraid', 'scared', 'fear', 'anxiety', 'worry', 'nervous', 'dread', 'panic', 'terrified', 'frightened', 'apprehensive', 'alarmed', 'shocked', 'timid', 'horrified', 'startled', 'uneasy', 'paranoid', 'spooked', 'shaken', 'petrified', 'intimidated', 'coward', 'phobia', 'tremble', 'shiver', 'suspicious', 'worried', 'disturbed', 'restless',
       // 中文
       '害怕', '恐惧', '焦虑', '担心', '紧张', '不安', '慌', '恐慌', '吓', '胆怯', '惶恐', '忐忑', '心慌', '怕',
-    ],
-    love: [
-      // English
-      'love', 'heart', 'crush', 'letter', 'kiss', 'adore', 'romance', 'dear', 'sweetheart', 'darling', 'beloved', 'affection', 'fond', 'cherish', 'devoted', 'passion', 'desire', 'sweet', 'honey', 'cuddle', 'hug', 'miss you', 'fall for', 'infatuated', 'admire', 'devotion', 'attachment', 'tender', 'caring', 'soulmate', 'relationship', 'dating', 'marry', 'married', 'fiance', 'fiancee', 'spouse', 'wife', 'husband',
-      // 中文
-      '爱', '喜欢', '心动', '暗恋', '表白', '亲', '想你', '甜蜜', '温柔', '心爱', '深爱', '宝贝', '亲爱', '情书', '浪漫', '牵挂',
     ],
     confusion: [
       // English

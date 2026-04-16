@@ -9,6 +9,14 @@ import ZKShield from '@/components/ui/ZKShield';
 import WizardCharacter from './WizardCharacter';
 import MintBadge from '@/components/ui/MintBadge';
 import { useApp } from '@/context/AppContext';
+import type { Emotion } from '@/data/mock';
+
+const VALID_EMOTIONS: readonly Emotion[] = ['anger', 'sadness', 'joy', 'fear', 'confusion'];
+function toEmotion(x: unknown): Emotion {
+  return typeof x === 'string' && (VALID_EMOTIONS as readonly string[]).includes(x)
+    ? (x as Emotion)
+    : 'confusion';
+}
 
 
 type Phase = 'writing' | 'transforming' | 'result';
@@ -26,7 +34,7 @@ export default function CreateForm() {
   const canSubmit = text.trim().length >= 4 && text.length <= maxLen;
 
 
-  const [emotion, setEmotion] = useState<string>('confusion');
+  const [emotion, setEmotion] = useState<Emotion>('confusion');
   const [emotionLoading, setEmotionLoading] = useState(false);
 
   async function fetchEmotion(text: string) {
@@ -42,12 +50,8 @@ export default function CreateForm() {
         body: JSON.stringify({ text }),
       });
       const result = await resp.json();
-      // result: [{label: "joy", score: 0.98}, ...]
-      if (Array.isArray(result) && result.length > 0) {
-        setEmotion(result[0].label || 'confusion');
-      } else {
-        setEmotion('confusion');
-      }
+      // result: { label: "joy", score: 0.98 }  (already mapped server-side)
+      setEmotion(toEmotion(result?.label));
     } catch {
       setEmotion('confusion');
     } finally {

@@ -1,4 +1,4 @@
-export type Emotion = 'anger' | 'sadness' | 'joy' | 'fear' | 'love' | 'confusion';
+export type Emotion = 'anger' | 'sadness' | 'joy' | 'fear' | 'confusion';
 
 export interface Confession {
   id: string;
@@ -66,7 +66,7 @@ export const MOCK_CONFESSIONS: Confession[] = [
   {
     id: 'c6',
     text: 'I wrote a love letter and never sent it. It sits in my drawer, aging like wine — or maybe like regret.',
-    emotion: 'love',
+    emotion: 'sadness',
     minted: true,
     createdAt: '2026-04-06T16:00:00Z',
     linkedIds: ['c9'],
@@ -93,7 +93,7 @@ export const MOCK_CONFESSIONS: Confession[] = [
   {
     id: 'c9',
     text: 'Having a secret crush is a one-person show. The only audience is yourself, yet it\'s more thrilling than any blockbuster.',
-    emotion: 'love',
+    emotion: 'joy',
     minted: false,
     createdAt: '2026-04-09T20:00:00Z',
     linkedIds: ['c6'],

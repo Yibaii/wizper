@@ -34,10 +34,10 @@ export default function ConfessionCard({ confession, index = 0 }: Props) {
         {/* Emotion tag */}
         <div className="flex items-center gap-1 mb-2">
           <span className="text-[10px]">
-            {EMOTION_LABELS[confession.emotion].icon}
+            {EMOTION_LABELS[confession.emotion]?.icon ?? EMOTION_LABELS.confusion.icon}
           </span>
           <span className="font-pixel text-[7px] text-wizard-cyan/70">
-            {EMOTION_LABELS[confession.emotion].en}
+            {EMOTION_LABELS[confession.emotion]?.en ?? confession.emotion}
           </span>
         </div>
 

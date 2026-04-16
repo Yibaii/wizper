@@ -26,7 +26,12 @@
       "Bash(sed 's/ws4.cell\\(row=r, column=1\\).font = ws4.cell\\(row=r, column=1\\).font or black_font/pass/' create_midterm3.py)",
       "Bash(python3 create_midterm3_fixed.py)",
       "Bash(python3 \"/Users/marvin/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/f3e30aeb-cb38-4445-a826-1b80e7a41a04/754d86c8-6438-494d-b6e4-09b7325eae7a/skills/xlsx/scripts/recalc.py\" /Users/marvin/Downloads/Midterm3_Solutions.xlsx)",
-      "Bash(python3)"
+      "Bash(python3)",
+      "Bash(ls -la /Users/marvin/dev/wizard/.env*)",
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:docs.semaphore.pse.dev)",
+      "Bash(node --experimental-vm-modules -e ':*)",
+      "Bash(node scripts/debug-msg-mismatch.mjs)"
     ]
   }
 }

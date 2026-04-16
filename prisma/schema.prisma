@@ -10,7 +10,7 @@ datasource db {
 model Expression {
   id        String   @id
   text      String
-  emotion   String   // anger | sadness | joy | fear | love | confusion
+  emotion   String   // anger | sadness | joy | fear | confusion
   minted    Boolean  @default(false)
   hidden    Boolean  @default(false)
   owner     String   // wallet address (lowercase)
