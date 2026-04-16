@@ -13,9 +13,8 @@ import { keccak256, toBytes, parseAbi, type Hex } from 'viem';
 import type { Identity } from '@semaphore-protocol/identity';
 import { type Confession, type Link } from '@/data/mock';
 import { CONTRACT_ADDRESSES } from '@/lib/contracts/config';
-import { WIZPER_TOKEN_ABI, WIZPER_NFT_ABI, WIZPER_ZK_ABI } from '@/lib/contracts/abis';
+import { WIZPER_TOKEN_ABI } from '@/lib/contracts/abis';
 import { WIZPER_ANONYMOUS_ABI } from '@/lib/contracts/anonymousAbi';
-import { generateNullifier, createCommitment, saveNullifier } from '@/lib/zk';
 import {
   loadIdentity,
   createIdentity as semaphoreCreateIdentity,
@@ -72,11 +71,8 @@ interface AppState {
   // Mine: user's own expressions (minted + un-minted)
   myExpressions: Confession[];
   links: Link[];
-  addConfession: (c: Confession) => void;
   deleteExpression: (id: string) => Promise<void>;
   hideExpression: (id: string, hidden?: boolean) => Promise<void>;
-  requestLink: (fromId: string, toId: string) => void;
-  confirmLink: (linkId: string) => void;
   /** On-chain link: sign with stealth owner of fromTokenId, relayer submits. */
   requestLinkOnchain: (args: { fromTokenId: bigint; toTokenId: bigint }) => Promise<`0x${string}`>;
   confirmLinkOnchain: (args: { fromTokenId: bigint; toTokenId: bigint }) => Promise<`0x${string}`>;
@@ -89,9 +85,7 @@ interface AppState {
    * equivalent to confirming).
    */
   inboundRequests: Link[];
-  mintExpressionNFT: (id: string, text: string, emotion: string, svgElement?: SVGSVGElement | null) => Promise<void>;
   mintSpiritAnonymous: (args: { id: string; text: string; emotion: string; svgElement?: SVGSVGElement | null }) => Promise<{ txHash: Hex; tokenURI: string }>;
-  payForLink: () => Promise<void>;
   claimDailyReward: () => Promise<void>;
   wallet: WalletState;
   isMinting: boolean;
@@ -197,28 +191,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { writeContractAsync } = useWriteContract();
 
   /* ── Actions ── */
-  const addConfession = useCallback(async (c: Confession) => {
-    if (!address) return;
-
-    const res = await fetch('/api/expressions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: c.id,
-        text: c.text,
-        emotion: c.emotion,
-        owner: address,
-      }),
-    });
-
-    if (!res.ok) {
-      console.error('Failed to save expression:', await res.text());
-      throw new Error('Failed to save expression');
-    }
-
-    // Refresh from DB to ensure consistency
-    await refreshMine();
-  }, [address, refreshMine]);
 
   // Delete a draft expression.
   // Supports both ownership models:
@@ -272,127 +244,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [address, identityObj, refreshFeed]);
 
-  // Mint Expression NFT
-  const mintExpressionNFT = useCallback(async (id: string, text: string, emotion: string, svgElement?: SVGSVGElement | null) => {
-    if (!address) throw new Error('Wallet not connected');
-    setIsMinting(true);
-
-    try {
-      // Step 1: Upload wizard image + metadata to IPFS
-      console.log('[Mint] Step 1/5: Uploading to IPFS...');
-      let tokenURI: string;
-
-      const svgString = svgElement
-        ? new XMLSerializer().serializeToString(svgElement)
-        : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80"><text y="40" font-size="8">${emotion}</text></svg>`;
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ svg: svgString, text, emotion, wizardId: id }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        tokenURI = data.tokenURI;
-        console.log('[Mint] IPFS upload OK:', tokenURI);
-      } else {
-        console.warn('[Mint] IPFS upload failed, using data URI fallback');
-        tokenURI = `data:application/json,${encodeURIComponent(JSON.stringify({
-          name: `Wizper Spirit #${id}`,
-          description: `Emotion: ${emotion}`,
-        }))}`;
-      }
-
-      // Step 2: ZK Commitment
-      const expressionHash = keccak256(toBytes(text));
-
-      if (CONTRACT_ADDRESSES.wizperZK) {
-        console.log('[Mint] Step 2/5: Submitting ZK commitment...');
-        const nullifier = generateNullifier();
-        const commitment = createCommitment(expressionHash, nullifier, address);
-
-        try {
-          await writeContractAsync({
-            address: CONTRACT_ADDRESSES.wizperZK as `0x${string}`,
-            abi: parseAbi(WIZPER_ZK_ABI as unknown as string[]),
-            functionName: 'submitCommitment',
-            args: [commitment, expressionHash],
-            gas: BigInt(300_000),
-          });
-        } catch (err) {
-          console.error('[Mint] ZK commitment failed:', err);
-          throw new Error('ZK commitment failed — check wallet and try again');
-        }
-
-        saveNullifier({
-          expressionId: id,
-          expressionHash,
-          nullifier,
-          commitment,
-          createdAt: new Date().toISOString(),
-        });
-        console.log('[Mint] ZK commitment OK');
-      }
-
-      // Step 3: Pay with WIZPER token (burn)
-      console.log('[Mint] Step 3/5: Paying mint cost (5 WIZPER)...');
-      try {
-        await writeContractAsync({
-          address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
-          abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
-          functionName: 'payForMint',
-          gas: BigInt(200_000),
-        });
-        console.log('[Mint] Payment OK');
-      } catch (err) {
-        console.error('[Mint] Payment failed:', err);
-        throw new Error('Payment failed — make sure you have enough WIZPER tokens');
-      }
-
-      // Step 4: Mint NFT with IPFS tokenURI
-      console.log('[Mint] Step 4/5: Minting NFT on-chain...');
-      try {
-        await writeContractAsync({
-          address: CONTRACT_ADDRESSES.wizperNFT as `0x${string}`,
-          abi: parseAbi(WIZPER_NFT_ABI as unknown as string[]),
-          functionName: 'mintExpression',
-          args: [address, tokenURI, expressionHash, emotion],
-          gas: BigInt(500_000),
-        });
-        console.log('[Mint] NFT minted OK');
-      } catch (err) {
-        console.error('[Mint] NFT mint failed:', err);
-        throw new Error('NFT mint failed on-chain');
-      }
-
-      // Step 5: Update database
-      console.log('[Mint] Step 5/5: Updating database...');
-      await fetch('/api/expressions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, minted: true, tokenURI }),
-      });
-
-      // Refresh both feeds
-      await Promise.all([refreshFeed(), refreshMine()]);
-      console.log('[Mint] Complete!');
-    } finally {
-      setIsMinting(false);
-    }
-  }, [address, writeContractAsync, refreshFeed, refreshMine]);
-
-  // Pay for link request
-  const payForLink = useCallback(async () => {
-    if (!address) throw new Error('Wallet not connected');
-    await writeContractAsync({
-      address: CONTRACT_ADDRESSES.wizperToken as `0x${string}`,
-      abi: parseAbi(WIZPER_TOKEN_ABI as unknown as string[]),
-      functionName: 'payForLink',
-      gas: BigInt(200_000),
-    });
-  }, [address, writeContractAsync]);
-
   // Claim daily reward
   const claimDailyReward = useCallback(async () => {
     if (!address) throw new Error('Wallet not connected');
@@ -403,31 +254,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       gas: BigInt(200_000),
     });
   }, [address, writeContractAsync]);
-
-  /* ── Links ── */
-  const requestLink = useCallback(async (fromId: string, toId: string) => {
-    const res = await fetch('/api/links', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromId, toId }),
-    });
-    if (res.ok) {
-      const link = await res.json();
-      setLinks(prev => [...prev, link]);
-    }
-  }, []);
-
-  const confirmLink = useCallback(async (linkId: string) => {
-    const res = await fetch('/api/links', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: linkId }),
-    });
-    if (res.ok) {
-      setLinks(prev => prev.map(l => l.id === linkId ? { ...l, status: 'confirmed' as const } : l));
-    }
-  }, []);
-
 
   const walletAddress = address
     ? `${address.slice(0, 6)}…${address.slice(-4)}`
@@ -893,18 +719,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         feedExpressions,
         myExpressions,
         links,
-        addConfession,
         deleteExpression,
         hideExpression,
-        requestLink,
-        confirmLink,
         requestLinkOnchain,
         confirmLinkOnchain,
         refreshChainLinks,
         inboundRequests,
-        mintExpressionNFT,
         mintSpiritAnonymous,
-        payForLink,
         claimDailyReward,
         wallet: {
           connected: isConnected,

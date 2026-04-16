@@ -1,8 +1,14 @@
 # Wizper
 
-> Where Emotions Become Spirits
+> Anonymous spirits, verifiable without identity.
 
 [English](#english) | [中文](#中文)
+
+Wizper lets people write short emotional expressions that are minted as soulbound NFTs without any on-chain link to the author's wallet. Identity is proven with a Semaphore zero-knowledge proof; gas is paid by a relayer; NFTs are owned by a stealth address derived from the user's identity secret.
+
+**Network:** Base Sepolia · **Chain ID:** 84532
+
+> Looking for the old design (main-wallet mint, `$WIZPER` tokenomics, hash-commitment ZK)? See [README.legacy.md](./README.legacy.md).
 
 ---
 
@@ -12,321 +18,219 @@
 
 ### 简介
 
-Wizper 是一个 Web3 匿名表达平台，拥有复古像素风美术风格。用户撰写匿名表达后，系统会自动将其转化为独一无二的程序化生成巫师角色。这些巫师可以在链上铸造为 NFT，身份隐私通过零知识承诺方案保护。
+Wizper 是一个 Web3 匿名情绪表达平台。用户写一段话，系统生成一个独一无二的像素巫师，mint 成 NFT。**主钱包和任何一条 spirit 都没有链上关联**——身份由 Semaphore 零知识证明匿名验证，gas 由 relayer 代付，NFT 归属于从 identity secret 派生的 stealth address。
 
-**部署于 Base Sepolia 测试网 | 前端托管于 Vercel**
+**运行在 Base Sepolia 测试网（Chain ID 84532）。**
 
 ---
 
 ### 目录
 
+- [为什么这样做](#为什么这样做)
 - [架构概览](#架构概览)
+- [关键流程](#关键流程)
 - [技术栈](#技术栈)
-- [核心功能](#核心功能)
 - [智能合约](#智能合约)
-- [零知识证明系统](#零知识证明系统)
-- [程序化巫师生成](#程序化巫师生成)
-- [情绪检测算法](#情绪检测算法)
-- [NFT 铸造流程](#nft-铸造流程)
-- [IPFS 存储](#ipfs-存储)
-- [代币经济](#代币经济)
-- [数据架构](#数据架构)
+- [数据库角色](#数据库角色)
 - [项目结构](#项目结构)
-- [部署与运行](#部署与运行)
+- [本地运行](#本地运行)
+- [已知限制](#已知限制)
+
+---
+
+### 为什么这样做
+
+传统 Web3 社交应用让用户用主钱包发帖：钱包地址永远是链上 `ownerOf(tokenId)` 的答案，任何人通过 BaseScan、Chainalysis、钱包分析工具都能把"这个帐号发了什么"和"这个人是谁"连起来。再加一层哈希承诺（我们的旧方案）治标不治本。
+
+**Wizper 把三块匿名性解耦：**
+
+1. **成员身份**：用 Semaphore 加入一个匿名群。主钱包签**一次** tx 证明"我是群里某人"，但链上**不记录"谁是哪个成员"**。
+2. **作者身份**：每次 mint 生成一条 Semaphore ZK 证明 + 一条随机 nullifier。合约只看到"某个群成员发了某个 signal"，不知道是哪个。
+3. **资产归属**：NFT mint 到从 identity secret 确定性派生出的 stealth address。这个地址的私钥只有用户能算出来，但和主钱包无链上关联。
+
+结果：运营方（我们）从后端或链上都**无法去匿名化用户**。
 
 ---
 
 ### 架构概览
 
 ```
-+------------------+       +-------------------+       +------------------------+
-|                  |       |                   |       |   智能合约              |
-|   Next.js 应用   |------>|   API 路由         |       |   (Base Sepolia)       |
-|   (前端)         |       |   /api/expressions|       |                        |
-|                  |       |   /api/upload     |       |  WizperToken (ERC-20)  |
-|  - wagmi/viem    |       |   /api/links      |       |  WizperNFT   (ERC-721) |
-|  - 巫师生成器     |       +--------+----------+       |  WizperZKVerifier      |
-|  - ZK 库         |                |                  +-----------+------------+
-|                  |                v                               ^
-+--------+---------+       +-------------------+                   |
-         |                 |  Supabase (PgSQL) |                   |
-         |                 |  Pinata (IPFS)    |                   |
-         |                 +-------------------+                   |
-         |                                                         |
-         +-------- MetaMask (钱包 + 交易签名) --------------------+
++---------------------+                              +--------------------------+
+|                     |   Semaphore proof + mint     |                          |
+|   Next.js 前端       |   params (stealthOwner,      |                          |
+|                     |   tokenURI, ...)             |                          |
+|   - identity (LS)   | ---------------------------> |  Relayer (hot wallet)    |
+|   - stealth derive  |                              |  /api/relay/{mint,link}  |
+|   - ZK proof gen    |                              |                          |
+|   - ECDSA sign      | <---- tx hash -------------- |  付 gas, 不验签, 只转发    |
++---------+-----------+                              +------------+-------------+
+          |                                                       |
+          |                                                       v
+          |                                        +--------------------------+
+          |                                        |  WizperAnonymous.sol     |
+          |                                        |  (Base Sepolia)          |
+          |     IPFS                               |                          |
+          |  (Pinata: SVG +                        |  Semaphore.validateProof |
+          |   JSON metadata 含 text)               |  mintSpirit (ERC-721)    |
+          | <------------------------------------> |  joinGroup               |
+          |                                        |  request/confirmLink     |
+          +------------- 读事件: SpiritMinted, ---- +                          |
+                          LinkRequested/Confirmed                              |
+                                                                               
+                                                   +--------------------------+
+                                                   |  Semaphore (PSE 部署)     |
+                                                   |  0x8A1fd199...c693D      |
+                                                   +--------------------------+
 ```
 
-### 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| 前端 | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| 动画 | Framer Motion |
-| 钱包 | wagmi 3, viem 2 |
-| 智能合约 | Solidity 0.8.20+, OpenZeppelin |
-| 合约部署 | Remix IDE（Base Sepolia, Chain ID: 84532） |
-| 数据库 | Prisma 5 + Supabase PostgreSQL |
-| 存储 | IPFS（Pinata SDK） |
-| ZK 隐私 | 基于哈希的承诺方案 (keccak256) |
-| 前端部署 | Vercel（自动 CI/CD） |
-| 字体 | Press Start 2P, Zpix |
+**辅助层（可选 cache）**：Supabase Postgres 存一份 Expression 和 Link 的只读缓存，`owner` 字段 = stealth address（不再是主钱包）。feed 查询走 cache，失败时可以用 `scripts/recover-missing-mints.mjs` 从链上事件重建。
 
 ---
 
-### 核心功能
+### 关键流程
 
-#### 1. 匿名表达创作
-用户撰写匿名表达（最多 280 字符）。情绪检测算法自动将每条表达归类为 6 种情绪之一，并根据文本内容程序化生成独一无二的巫师角色。
+#### 1. 加入 Wizper 群 (`/join`，每用户一次)
 
-#### 2. 数据持久化（数据库）
-- **未铸造的表达** — 仅存储在数据库中，用户可以随时删除
-- **已铸造的表达** — 上链 + IPFS + 数据库，出现在公开 Feed 中，不可删除（但可隐藏）
-- 数据按钱包地址隔离，断开钱包后不显示他人数据
+```
+客户端：
+  identity = new Identity()                      // 随机 32B secret
+  localStorage["wizper_semaphore_identity_v1"] = identity.export()
+  stealthAddr = privateKeyToAccount(
+      keccak256("wizper-stealth-v1:" + secret)
+  ).address
 
-#### 3. NFT 铸造
-表达可以铸造为 ERC-721 NFT。巫师 SVG 图像和元数据上传至 IPFS，NFT 的 `tokenURI` 指向不可变的 IPFS 内容。
+  // 用户备份 secret（导出 JSON 或复制），然后：
+  await writeContract(WizperAnonymous, "joinGroup", [identity.commitment])
+  // ← 主钱包签一笔 tx。链上只能看到"某个钱包加入了 Wizper 群"。
+```
 
-#### 4. ZK 隐私保护
-铸造时会在链上提交零知识承诺。这允许用户后续证明自己是某条表达的作者，而无需暴露钱包地址。
+#### 2. 匿名 mint (`/create`)
 
-#### 5. 连接图谱
-用户可以在共享相似情绪的表达之间请求"魔法链接"。确认的连接在力导向图中可视化展示，带有动态粒子效果。
+```
+1. 上传 text + SVG + metadata 到 IPFS
+   → tokenURI = "ipfs://{cid}"
+2. 拉链上最新 MemberJoined 事件，重建 Semaphore 群
+3. 生成 Semaphore proof，binding:
+     - stealthOwner（Merkle tree 成员）
+     - tokenURI + expressionHash + emotion (signal)
+     - scope = expressionHash（scope 相同 = 禁止同一 identity 重复 mint 同一文本）
+4. POST /api/relay/mint { proof, stealthOwner, tokenURI, ... }
+5. Relayer 钱包调用 mintSpirit(...)
+6. 合约：Semaphore.validateProof → mint NFT 给 stealthOwner
+7. 前端解析 SpiritMinted 事件拿 tokenId，写 DB cache
+```
 
-#### 6. 代币经济
-平台由 $WIZPER（ERC-20）驱动，铸造和链接时燃烧代币，每日签到可领取奖励。
+**主钱包零签名**。浏览器层面用户只看到"发布中 → 完成"。
 
-#### 7. 我的表达
-"Mine" 页面展示当前钱包拥有的所有表达（已铸造 + 未铸造），支持筛选、删除和隐藏操作。
+#### 3. Link 两个 spirit
 
-#### 8. 每日奖励
-首页提供每日签到领取 6 $WIZPER，每 24 小时限领一次。
+Link 用**stealth 私钥 ECDSA 签名**，不再用 ZK：
+
+```
+发起方（tokenA 的 owner）：
+  stealthKey_A.signMessage(
+    keccak256(abi.encode(LINK_REQUEST_TYPEHASH, chainId, contract, A, B))
+  )
+  → POST /api/relay/link { kind: 'request', fromTokenId: A, toTokenId: B, sig }
+
+合约 requestLink(A, B, sig)：
+  require(ecrecover(digest) == ownerOf(A))       // stealth 地址是公开的
+  links[linkId(A,B)].status = Pending
+
+接受方（tokenB 的 owner，类似流程）：
+  → POST /api/relay/link { kind: 'confirm', ... }
+
+合约 confirmLink(A, B, sig)：
+  require(ecrecover == ownerOf(B))
+  links[...].status = Confirmed
+```
+
+前端智能化：如果用户在 B 的详情页看到"A 请求了 link"，按钮会变 **"Accept Link"**——点一次等同于 confirm，避免建立反向重复。
+
+---
+
+### 技术栈
+
+| 层 | 技术 |
+|---|---|
+| 前端 | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 |
+| 钱包 | wagmi 3, viem 2, MetaMask / WalletConnect |
+| 匿名 ZK | `@semaphore-protocol/identity`, `@semaphore-protocol/group`, `@semaphore-protocol/proof` (v4) |
+| 合约 | Solidity 0.8.23+, OpenZeppelin v5 (ERC-721 Enumerable + URIStorage), Semaphore v4 contracts |
+| 部署 | Remix（一次性）到 Base Sepolia |
+| 情绪分析 | HuggingFace Inference Providers router<br>— 英文：`j-hartmann/emotion-english-distilroberta-base`<br>— 中文：`Johnson8187/Chinese-Emotion`<br>自动按 CJK 字符检测语言 |
+| 存储 | IPFS via Pinata (SVG + ERC-721 metadata including full `text`) |
+| 数据库 | Prisma 5 + Supabase PostgreSQL（只作 cache，非 source of truth） |
+| Relayer | Node hot wallet（存于环境变量），代付 gas |
 
 ---
 
 ### 智能合约
 
-#### WizperToken ($WIZPER) — ERC-20
+主合约：**[contracts/WizperAnonymous.sol](contracts/WizperAnonymous.sol)**
 
-**地址：** `0x4b86023466B8098aAE12D399543e35B42E0ab2Ce`
+部署到 Base Sepolia，引用 PSE 官方 Semaphore 部署 `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D`。
 
-基于 OpenZeppelin 的 ERC-20 代币，带有燃烧机制。
-
-```solidity
-uint256 public constant MINT_COST    =  5 * 10 ** 18;  // 铸造 NFT 消耗 5 WIZPER
-uint256 public constant LINK_COST    =  2 * 10 ** 18;  // 请求链接消耗 2 WIZPER
-uint256 public constant DAILY_REWARD =  6 * 10 ** 18;  // 每日签到奖励 6 WIZPER
-uint256 public constant MAX_SUPPLY   = 100_000_000 * 10 ** 18;
-```
-
-| 函数 | 说明 |
-|------|------|
-| `payForMint()` | 燃烧调用者 5 WIZPER，铸造 NFT 前调用 |
-| `payForLink()` | 燃烧调用者 2 WIZPER，请求链接前调用 |
-| `claimDailyReward()` | 向调用者铸造 6 WIZPER，24 小时冷却 |
-| `airdrop(to, amount)` | 仅合约所有者可调用，向目标地址铸造代币 |
-
-**初始分发：** 部署时向部署者铸造 10,000,000 WIZPER（10%）。
-
----
-
-#### WizperNFT — ERC-721
-
-**地址：** `0xE917Ba47a22c15840eAEC0a644330F76C2edaD95`
-
-每个 NFT 代表一条已铸造的表达。
+#### 状态
 
 ```solidity
-struct ExpressionData {
-    bytes32 expressionHash;   // 表达文本的 keccak256 哈希
-    string  emotion;          // anger | sadness | joy | fear | love | confusion
-    uint256 mintedAt;         // 铸造时的区块时间戳
-}
+ISemaphore public immutable semaphore;
+uint256 public groupId;                        // 初始化后固定
+bool public immutable soulbound;               // 部署时决定，生产设为 true
+
+// NFT
+mapping(uint256 => SpiritData) public spirits;  // tokenId → 哈希/情绪/时间
+mapping(bytes32 => bool) public hashMinted;    // 防同文本重复 mint
+
+// Link
+enum LinkStatus { None, Pending, Confirmed }
+mapping(bytes32 => LinkData) public links;     // keccak(from,to) → 状态
+mapping(uint256 => bytes32[]) public linksByToken;
 ```
 
-| 函数 | 说明 |
-|------|------|
-| `mintExpression(to, uri, expressionHash, emotion)` | 铸造新 NFT，`hashMinted` 映射防止重复铸造 |
-| `getExpression(tokenId)` | 返回指定代币的表达数据 |
-| `totalMinted()` | 返回已铸造 NFT 总数 |
+#### 函数
+
+| 函数 | 谁调 | 作用 |
+|---|---|---|
+| `initialize()` | owner 一次性 | 在 Semaphore 建一个新 group，本合约作 admin |
+| `joinGroup(uint256 commitment)` | 任何地址 | 把 identity commitment 加入 Merkle tree |
+| `mintSpirit(proof, stealthOwner, uri, expressionHash, emotion)` | 通常是 relayer | 验 proof + mint ERC-721 到 stealth 地址 |
+| `requestLink(from, to, sig)` | 通常是 relayer | 验 sig 来自 ownerOf(from)，标记 Pending |
+| `confirmLink(from, to, sig)` | 通常是 relayer | 验 sig 来自 ownerOf(to)，标记 Confirmed |
+
+#### 事件
+
+```solidity
+event GroupInitialized(uint256 indexed groupId);
+event MemberJoined(uint256 identityCommitment);
+event SpiritMinted(uint256 indexed tokenId, address indexed stealthOwner,
+                   bytes32 expressionHash, string emotion);
+event LinkRequested(bytes32 indexed linkId, uint256 indexed fromTokenId,
+                    uint256 indexed toTokenId);
+event LinkConfirmed(bytes32 indexed linkId, uint256 indexed fromTokenId,
+                    uint256 indexed toTokenId);
+```
+
+前端基于这些事件重建所有状态（identity 成员资格、我的 spirits、link 图）。
 
 ---
 
-#### WizperZKVerifier — 零知识验证器
+### 数据库角色
 
-**地址：** `0x128C66125fD13910948191e23f0b5a2531D161E7`
-
-实现基于哈希的承诺方案，用于匿名作者身份证明。
-
-| 函数 | 说明 |
-|------|------|
-| `submitCommitment(commitment, expressionHash)` | 铸造时在链上存储 ZK 承诺 |
-| `verifyProof(expressionHash, nullifier, author)` | 通过重建承诺来验证所有权，每个 nullifier 仅能使用一次 |
-| `isVerified(expressionHash)` | 检查表达是否已通过 ZK 验证 |
-
----
-
-### 零知识证明系统
-
-Wizper 使用**基于哈希的承诺方案**，允许用户在不暴露钱包地址的情况下证明自己是某条表达的作者。
-
-#### 阶段一：承诺（铸造时）
-
-```
-输入：
-  expression_text  — 原始表达文本
-  author           — 用户钱包地址（私密，不存储）
-
-过程：
-  1. expressionHash  = keccak256(expression_text)
-  2. nullifier       = 随机 32 字节（客户端 crypto.getRandomValues 生成）
-  3. commitment      = keccak256(expressionHash || nullifier || author)
-
-链上操作：
-  4. submitCommitment(commitment, expressionHash) → 存储承诺
-
-客户端：
-  5. 将 nullifier 保存到 localStorage（用户的秘密密钥）
-```
-
-#### 阶段二：验证（证明所有权）
-
-```
-输入：
-  expressionHash  — 公开数据，来自 NFT
-  nullifier       — 用户的秘密，来自 localStorage
-  author          — 声称的所有者地址
-
-过程：
-  1. 重建：commitment' = keccak256(expressionHash || nullifier || author)
-  2. 检查：commitment' 是否存在于链上 commitments 映射中
-  3. 检查：nullifier 是否已使用（防重放）
-  4. 标记 nullifier 为已使用，标记表达为已验证
-
-输出：
-  valid = true → 证明 (author) 撰写了 (expressionHash)，且链上无关联
-```
-
-#### 安全属性
-
-| 属性 | 保证 |
-|------|------|
-| **隐藏性** | 承诺不泄露作者信息。给定 `commitment = H(expressionHash, nullifier, author)`，观察者无法反向哈希得到 `author` |
-| **绑定性** | 承诺绑定到特定的（表达，作者）对。不同作者在不知道 nullifier 的情况下无法产生相同承诺 |
-| **防重放** | 每个 nullifier 只能使用一次 |
-| **不可关联性** | 同一作者的多条表达使用独立的随机 nullifier，使其无法被关联 |
-
----
-
-### 程序化巫师生成
-
-每条表达确定性地生成一个独一无二的巫师角色 SVG。生成完全基于文本内容——相同文本始终产生相同巫师。
-
-#### 哈希函数
-
-```javascript
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-```
-
-#### 特征选择
-
-| 特征 | 选项 | 数量 | 选择方式 |
-|------|------|------|---------|
-| 长袍颜色 | 紫色、青色、深红、蓝色、金色、绿色、棕色、银色 | 8 | `(h + 0) % 8` |
-| 肤色 | 5 种肤色 | 5 | `(h + 7) % 5` |
-| 胡须颜色 | 白、灰、棕、深色、黑、金、红 | 7 | `(h + 13) % 7` |
-| 法杖顶部 | 宝珠、水晶、火焰、星星、新月 | 5 | `(h + 19) % 5` |
-| 帽子样式 | 尖帽、宽帽、兜帽、王冠 | 4 | `(h + 23) % 4` |
-| 眼睛类型 | 点状、发光、高光、窄缝 | 4 | `h % 4` |
-| 有胡须 | 是/否 | 2 | `h % 3 !== 0`（67%） |
-| 有法杖 | 是/否 | 2 | `h % 4 !== 0`（75%） |
-| 有猫咪 | 是/否 | 2 | `h % 7 === 0`（14%） |
-
-**总组合数：** `8 x 5 x 7 x 5 x 4 x 4 x 2 x 2 x 2 = 179,200` 个独特巫师
-
----
-
-### 情绪检测算法
-
-表达通过关键词匹配分类为 6 种情绪：
-
-| 情绪 | 关键词 | 图标 |
-|------|--------|------|
-| 愤怒 | angry, furious, rage, hate, scream, mad, frustrated | 🔥 |
-| 悲伤 | sad, cry, tears, lonely, miss, depressed, grief, alone | 💧 |
-| 喜悦 | happy, smile, laugh, amazing, wonderful, joy, glad, bright, courage | ✨ |
-| 恐惧 | afraid, scared, fear, anxiety, worry, nervous, dread, panic | 👁️ |
-| 爱 | love, heart, crush, letter, kiss, adore, romance, dear | 💜 |
-| 困惑 | confused, lost, why, spinning, understand, unsure, uncertain | 🌀 |
-
-无关键词匹配时，默认情绪为**困惑**。
-
----
-
-### NFT 铸造流程
-
-完整铸造过程包含 5 个步骤：
-
-```
-用户点击 "Mint NFT"
-        |
-        v
-[1] 上传至 IPFS（链下）
-    - 序列化巫师 SVG → POST /api/upload → Pinata
-    - 上传 SVG 图片 → 获取 imageCID
-    - 构建 ERC-721 元数据 JSON
-    - 上传元数据 → tokenURI = "ipfs://{metadataCID}"
-        |
-        v
-[2] 提交 ZK 承诺（链上交易 #1）
-    - 生成随机 nullifier
-    - 计算 commitment = keccak256(expressionHash, nullifier, author)
-    - 调用 WizperZKVerifier.submitCommitment()
-    - 保存 nullifier 到 localStorage
-        |
-        v
-[3] 支付 WIZPER（链上交易 #2）
-    - 调用 WizperToken.payForMint()
-    - 燃烧用户余额中的 5 WIZPER
-        |
-        v
-[4] 铸造 NFT（链上交易 #3）
-    - 调用 WizperNFT.mintExpression()
-    - NFT 铸造到用户地址
-        |
-        v
-[5] 更新数据库
-    - PATCH /api/expressions → 标记 minted=true
-    - 刷新 Feed 和 Mine 页面
-        |
-        v
-    铸造完成
-```
-
----
-
-### 数据架构
-
-Wizper 使用 Prisma ORM + Supabase PostgreSQL 进行数据持久化。
-
-#### 数据模型
+**DB 是可选 cache，不是 source of truth**。所有数据都能从链上事件 + IPFS metadata 重建。
 
 ```prisma
 model Expression {
-  id        String    @id
-  text      String
-  emotion   String                    // anger | sadness | joy | fear | love | confusion
-  minted    Boolean   @default(false)
-  hidden    Boolean   @default(false)
-  owner     String                    // 钱包地址（小写）
-  tokenURI  String?                   // IPFS URI（铸造后设置）
-  txHash    String?                   // 铸造交易哈希
-  createdAt DateTime  @default(now())
+  id        String   @id         // 客户端生成 c-{timestamp} 或 recovered-{tokenId}
+  text      String                // 完整文本（冗余；IPFS metadata 里也有）
+  emotion   String                // anger | sadness | joy | fear | confusion
+  minted    Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  owner     String                // stealth address（小写）
+  tokenId   String?               // ERC-721 id，十进制字符串
+  tokenURI  String?
+  txHash    String?
+  createdAt DateTime @default(now())
   mintedAt  DateTime?
 }
 
@@ -338,58 +242,9 @@ model Link {
 }
 ```
 
-#### API 路由
+**注意：Link 表目前未被新 flow 写入**，前端链接状态直接扫 `LinkRequested` / `LinkConfirmed` 事件。保留只为向后兼容。
 
-| 路由 | 方法 | 说明 |
-|------|------|------|
-| `/api/expressions` | GET | 获取公开 Feed（已铸造 + 未隐藏） |
-| `/api/expressions` | POST | 创建新表达（保存到数据库） |
-| `/api/expressions` | PATCH | 更新表达（铸造、隐藏） |
-| `/api/expressions` | DELETE | 删除未铸造的表达（仅限所有者） |
-| `/api/expressions/mine` | GET | 获取当前钱包的所有表达 |
-| `/api/links` | GET/POST/PATCH | 链接管理 |
-| `/api/upload` | POST | IPFS 上传（SVG + 元数据） |
-
-#### 数据流规则
-
-| 状态 | 存储 | 可见性 | 可删除 | 可隐藏 |
-|------|------|--------|--------|--------|
-| 未铸造 | 仅数据库 | 仅 Mine 页面 | 是 | 否 |
-| 已铸造 | 数据库 + 链上 + IPFS | Feed + Mine | 否 | 是 |
-| 已隐藏 | 数据库 + 链上 + IPFS | 仅 Mine | 否 | — |
-
----
-
-### 代币经济
-
-#### $WIZPER 代币概览
-
-| 参数 | 值 |
-|------|------|
-| 名称 | Wizper |
-| 符号 | WIZPER |
-| 标准 | ERC-20 |
-| 最大供应量 | 100,000,000 WIZPER |
-| 初始铸造 | 10,000,000（10% 给部署者） |
-| 精度 | 18 |
-
-#### 燃烧机制（通缩）
-
-| 行为 | 消耗 | 机制 |
-|------|------|------|
-| 铸造 NFT | 5 WIZPER | 通过 `payForMint()` 燃烧 |
-| 请求链接 | 2 WIZPER | 通过 `payForLink()` 燃烧 |
-
-#### 奖励机制（通胀）
-
-| 行为 | 奖励 | 约束 |
-|------|------|------|
-| 每日签到 | 6 WIZPER | 每地址 24 小时冷却，受 MAX_SUPPLY 限制 |
-| 空投 | 可变 | 仅所有者，受 MAX_SUPPLY 限制 |
-
-```
-有效供应量 = 初始铸造 + 每日奖励 + 空投 - 铸造燃烧 - 链接燃烧
-```
+**恢复机制**：如果链上 mint 成功但 DB 没写入（比如 POST 500），跑一次 [`scripts/recover-missing-mints.mjs`](scripts/recover-missing-mints.mjs) 从事件 + IPFS 重建 DB 记录。
 
 ---
 
@@ -397,120 +252,146 @@ model Link {
 
 ```
 wizper/
-├── contracts/                    # Solidity 智能合约
-│   ├── WizperToken.sol           # $WIZPER ERC-20 代币
-│   ├── WizperNFT.sol             # 表达 NFT (ERC-721)
-│   └── WizperZKVerifier.sol      # ZK 承诺验证器
+├── contracts/
+│   ├── WizperAnonymous.sol          # ★ 主合约（Phase 1）
+│   ├── WizperToken.sol              # 保留：首页 daily reward 还在用
+│   ├── ZK_POC_GUIDE.md              # Phase 0 POC 部署/测试指南
+│   └── legacy/                      # v0 标本，不部署，仅供参考
+│       ├── README.md
+│       ├── WizperNFT.sol
+│       ├── WizperZKVerifier.sol
+│       └── DEPLOY_GUIDE.md
 │
-├── prisma/
-│   └── schema.prisma             # 数据库模型定义
+├── scripts/
+│   ├── gen-relayer.mjs              # 生成 relayer 私钥
+│   ├── recover-missing-mints.mjs    # 事件 → DB 重建
+│   ├── dedupe-expressions.mjs       # DB 去重（同 owner+text）
+│   └── debug-*.mjs                  # 调试辅助
+│
+├── prisma/schema.prisma             # Expression + Link
 │
 ├── src/
-│   ├── app/                      # Next.js App Router
-│   │   ├── page.tsx              # 首页（含每日签到）
-│   │   ├── create/page.tsx       # 表达创作
-│   │   ├── feed/page.tsx         # 表达画廊（公开 Feed）
-│   │   ├── my/page.tsx           # 我的表达（管理页）
-│   │   ├── connections/page.tsx  # 连接图谱可视化
-│   │   ├── confession/[id]/      # 表达详情 + 铸造
-│   │   └── api/                  # API 路由
-│   │       ├── expressions/      # 表达 CRUD
-│   │       ├── links/            # 链接管理
-│   │       └── upload/           # IPFS 上传
+│   ├── app/
+│   │   ├── page.tsx                 # 首页
+│   │   ├── join/page.tsx            # ★ 身份 onboarding
+│   │   ├── create/page.tsx          # 匿名 mint
+│   │   ├── feed/page.tsx            # 公共 feed
+│   │   ├── my/page.tsx              # 我的 spirits（stealth 地址持有）
+│   │   ├── connections/page.tsx     # Link 图 + inbound 提醒
+│   │   ├── confession/[id]/page.tsx # 详情 + link 操作
+│   │   ├── zk-poc/page.tsx          # Phase 0 POC 测试页（dev only）
+│   │   └── api/
+│   │       ├── emotion/             # HuggingFace 代理（双语）
+│   │       ├── expressions/         # cache CRUD
+│   │       ├── relay/
+│   │       │   ├── mint/            # ★ 匿名 mint relayer
+│   │       │   └── link/            # ★ link request/confirm relayer
+│   │       └── upload/              # Pinata IPFS 上传
 │   │
-│   ├── components/               # React 组件
-│   │   ├── confession/           # 创作表单、巫师角色、卡片
-│   │   ├── connection/           # 连接图谱、链接卡片
-│   │   ├── layout/               # 导航栏、像素风景、粒子背景
-│   │   └── ui/                   # 按钮、徽章、面板等 UI 组件
+│   ├── components/
+│   │   ├── confession/              # 创作表单 / 巫师角色 / 卡片
+│   │   ├── connection/              # 力导向图 + 链接卡
+│   │   ├── layout/                  # Navbar（含 inbound badge）
+│   │   └── ui/
 │   │
 │   ├── context/
-│   │   ├── AppContext.tsx         # 应用状态 + 合约交互
-│   │   └── ThemeContext.tsx       # 日/夜主题
+│   │   └── AppContext.tsx           # ★ 状态中枢（identity / links / mint）
 │   │
 │   └── lib/
-│       ├── db.ts                 # Prisma 客户端
-│       ├── zk.ts                 # ZK 承诺工具
-│       ├── pinata.ts             # Pinata IPFS 客户端
-│       ├── wagmi.ts              # wagmi 配置
-│       ├── emotions.ts           # 情绪检测 + 调色板
-│       └── contracts/            # 合约 ABI + 地址配置
+│       ├── semaphore.ts             # identity + proof 辅助
+│       ├── stealth.ts               # stealth address 派生
+│       ├── link.ts                  # link 签名 + linkId 计算
+│       ├── emotions.ts              # UI 调色板 + 情绪 label
+│       ├── contracts/
+│       │   ├── anonymousAbi.ts      # WizperAnonymous ABI
+│       │   └── config.ts            # 合约地址 + 链配置
+│       └── legacy/                  # v0 标本，不导入
+│           ├── README.md
+│           └── zk.ts                # 老的哈希承诺 helper
 │
-├── .env.local                    # 环境变量（不提交）
+├── .env.local                       # RELAYER_PRIVATE_KEY, 合约地址, Pinata, DB, HF token
 └── package.json
 ```
 
 ---
 
-### 部署与运行
+### 本地运行
 
-#### 前置要求
+#### 前置
 
-- Node.js 18+
-- pnpm
-- MetaMask 浏览器扩展
-- Base Sepolia 测试网 ETH（[水龙头](https://www.alchemy.com/faucets/base-sepolia)）
+- Node 18+、pnpm
+- MetaMask 切到 Base Sepolia（chainId 84532）
+- 主钱包有少量 Base Sepolia ETH（仅 joinGroup 用）
+- Pinata JWT、HuggingFace API Token、Supabase DATABASE_URL
 
-#### 1. 安装依赖
+#### 环境变量（`.env.local`）
+
+```env
+# Chain
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_WIZPER_ANONYMOUS_ADDRESS=0x...     # 部署 WizperAnonymous 后填
+NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK=40295190       # 可选；告诉 indexer 从哪块扫
+
+# Relayer hot wallet (Node 端, 不带 NEXT_PUBLIC_)
+RELAYER_PRIVATE_KEY=0x...
+
+# IPFS
+PINATA_JWT=...
+NEXT_PUBLIC_PINATA_GATEWAY=your-gateway.mypinata.cloud
+
+# DB
+DATABASE_URL=postgresql://...
+
+# Emotion detection
+HUGGINGFACE_API_TOKEN=hf_...
+```
+
+#### 启动顺序
 
 ```bash
 pnpm install
-```
+npx prisma db push          # 创建/同步表
+pnpm prisma generate        # 生成 Prisma client
 
-#### 2. 部署智能合约
+# 生成 relayer 钱包
+node scripts/gen-relayer.mjs
+# 把地址存起来，向它转 ~0.05 Base Sepolia ETH
+# 私钥填进 RELAYER_PRIVATE_KEY
 
-打开 [Remix IDE](https://remix.ethereum.org)，将每个合约部署到 Base Sepolia：
-
-1. **WizperToken.sol** — Solidity 0.8.20+ 编译，通过 MetaMask 部署
-2. **WizperNFT.sol** — 同上
-3. **WizperZKVerifier.sol** — 同上
-
-#### 3. 配置环境变量
-
-```bash
-cp .env.local.example .env.local
-```
-
-```env
-NEXT_PUBLIC_WIZPER_TOKEN_ADDRESS=0x...
-NEXT_PUBLIC_WIZPER_NFT_ADDRESS=0x...
-NEXT_PUBLIC_WIZPER_ZK_ADDRESS=0x...
-NEXT_PUBLIC_CHAIN_ID=84532
-PINATA_JWT=your_pinata_jwt
-NEXT_PUBLIC_PINATA_GATEWAY=your-gateway.mypinata.cloud
-DATABASE_URL=postgresql://...  # Supabase 连接字符串
-```
-
-#### 4. 初始化数据库
-
-```bash
-npx prisma db push
-```
-
-#### 5. 启动开发服务器
-
-```bash
+# 启动
 pnpm dev
 ```
 
-访问 http://localhost:3000
+#### 部署合约（一次性）
 
-#### 6. Vercel 部署
+1. Remix 打开 [contracts/WizperAnonymous.sol](contracts/WizperAnonymous.sol)
+2. Compiler 0.8.23+，Environment: `Injected Provider - MetaMask` (Base Sepolia)
+3. Deploy 参数：
+   - `semaphoreAddress`: `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D`
+   - `_soulbound`: `true`
+4. 部署后调用 `initialize()` 一次（创建 Semaphore group）
+5. 把合约地址和部署块号写进 `.env.local`
 
-1. Push 代码到 GitHub
-2. 在 [Vercel](https://vercel.com) 导入仓库
-3. 添加所有环境变量
-4. 部署完成后，每次 push 到 main 自动重新部署
+详细步骤见 [contracts/ZK_POC_GUIDE.md](contracts/ZK_POC_GUIDE.md)。
 
 ---
 
-### 已部署合约（Base Sepolia）
+### 已知限制
 
-| 合约 | 地址 | 浏览器 |
-|------|------|--------|
-| WizperToken | `0x4b86023466B8098aAE12D399543e35B42E0ab2Ce` | [查看](https://sepolia.basescan.org/address/0x4b86023466B8098aAE12D399543e35B42E0ab2Ce) |
-| WizperNFT | `0xE917Ba47a22c15840eAEC0a644330F76C2edaD95` | [查看](https://sepolia.basescan.org/address/0xE917Ba47a22c15840eAEC0a644330F76C2edaD95) |
-| WizperZKVerifier | `0x128C66125fD13910948191e23j0b5a2531D161E7` | [查看](https://sepolia.basescan.org/address/0x128C66125fD13910948191e23f0b5a2531D161E7) |
+**当前（Phase 1 结束时）尚未解决的**：
+
+- **事件扫描靠公共 RPC**，`eth_getLogs` 最多 10K 块/次；生产需切 Alchemy
+- **没有 indexer**，feed/links 依赖前端实时扫事件；链上吞吐高时 UI 会慢
+- **Identity 备份 UX 简陋**，用户清浏览器 localStorage → 永久失去 spirit 所有权
+- **反女巫**：`joinGroup` 任何地址都能调，mainnet 前应加 hCaptcha / WorldID
+- **"love" 情绪已移除**（当前模型输出不包含 love，旧数据会被映射为其他类别）
+- **Legacy 代码**已移到 `contracts/legacy/` 和 `src/lib/legacy/` 作标本；见各目录 README
+
+**不是限制（设计选择）**：
+
+- Text 公开存 IPFS metadata：anonymity 与 readability 权衡下选择公开
+- DB 保留作 cache：加速 feed，但不是 trust anchor
+- Link 不用 ZK：stealth 地址本身公开，ECDSA 足够
 
 ---
 
@@ -522,390 +403,220 @@ pnpm dev
 
 ### Introduction
 
-Wizper is a Web3 anonymous expression platform with a retro pixel-art aesthetic. Users write anonymous expressions that are automatically transformed into unique procedurally-generated wizard characters. These wizards can be minted as NFTs on-chain, with identity privacy protected by a Zero-Knowledge commitment scheme.
+Wizper is a Web3 anonymous expression platform. Users write a short piece of text, it is turned into a unique pixel wizard, and minted as a soulbound NFT. **The main wallet has no on-chain link to any spirit.** Identity is proven via a Semaphore zero-knowledge proof, gas is paid by a relayer, and each NFT is owned by a stealth address derived from the user's identity secret.
 
-**Live on Base Sepolia Testnet | Frontend hosted on Vercel**
+**Runs on Base Sepolia (chainId 84532).**
 
 ---
 
 ### Table of Contents
 
-- [Architecture Overview](#architecture-overview)
-- [Tech Stack](#tech-stack)
-- [Core Features](#core-features)
-- [Smart Contracts](#smart-contracts-1)
-- [Zero-Knowledge Proof System](#zero-knowledge-proof-system)
-- [Procedural Wizard Generation](#procedural-wizard-generation)
-- [Emotion Detection Algorithm](#emotion-detection-algorithm)
-- [NFT Minting Flow](#nft-minting-flow)
-- [IPFS Storage](#ipfs-storage)
-- [Token Economics](#token-economics)
-- [Data Architecture](#data-architecture)
+- [Why](#why)
+- [Architecture](#architecture)
+- [Key Flows](#key-flows)
+- [Tech Stack](#tech-stack-1)
+- [Smart Contract](#smart-contract)
+- [Database Role](#database-role)
 - [Project Structure](#project-structure-1)
-- [Setup & Deployment](#setup--deployment)
+- [Running Locally](#running-locally)
+- [Known Limitations](#known-limitations)
 
 ---
 
-### Architecture Overview
+### Why
+
+Traditional Web3 social apps post from the user's main wallet: the wallet is forever the `ownerOf(tokenId)` answer, and anyone (block explorer, Chainalysis, wallet profilers) can join "this account said X" with "this person is Y". Stacking a single hash commitment on top (the old Wizper design) only papers over the problem.
+
+**Wizper separates three anonymity concerns:**
+
+1. **Membership**: users join a Semaphore anonymous group. The main wallet signs **once** proving "I am *some* member", but the chain never records *which* member corresponds to which post.
+2. **Authorship**: every mint carries a fresh Semaphore ZK proof plus a random nullifier. The contract sees "some group member submitted this signal" — never *which*.
+3. **Ownership**: the NFT is minted to a stealth address deterministically derived from the identity secret. Only the user can derive the private key, but the address has no on-chain trace to the main wallet.
+
+Result: we (the operator) cannot deanonymize users — not from the backend, not from the chain.
+
+---
+
+### Architecture
 
 ```
-+------------------+       +-------------------+       +------------------------+
-|                  |       |                   |       |   Smart Contracts      |
-|   Next.js App    |------>|   API Routes      |       |   (Base Sepolia)       |
-|   (Frontend)     |       |   /api/expressions|       |                        |
-|                  |       |   /api/upload     |       |  WizperToken (ERC-20)  |
-|  - wagmi/viem    |       |   /api/links      |       |  WizperNFT   (ERC-721) |
-|  - WizardGen     |       +--------+----------+       |  WizperZKVerifier      |
-|  - ZK lib        |                |                  +-----------+------------+
-|                  |                v                               ^
-+--------+---------+       +-------------------+                   |
-         |                 |  Supabase (PgSQL) |                   |
-         |                 |  Pinata (IPFS)    |                   |
-         |                 +-------------------+                   |
-         |                                                         |
-         +-------- MetaMask (wallet + tx signing) ----------------+
++---------------------+                              +--------------------------+
+|                     |   Semaphore proof + mint     |                          |
+|   Next.js frontend  |   params (stealthOwner,      |                          |
+|                     |   tokenURI, ...)             |                          |
+|   - identity (LS)   | ---------------------------> |  Relayer (hot wallet)    |
+|   - stealth derive  |                              |  /api/relay/{mint,link}  |
+|   - ZK proof gen    |                              |                          |
+|   - ECDSA sign      | <---- tx hash -------------- |  pays gas, no trust      |
++---------+-----------+                              +------------+-------------+
+          |                                                       |
+          |                                                       v
+          |                                        +--------------------------+
+          |                                        |  WizperAnonymous.sol     |
+          |   IPFS                                 |  (Base Sepolia)          |
+          |  (Pinata: SVG +                        |                          |
+          |   JSON metadata                        |  Semaphore.validateProof |
+          |   incl. text)                          |  mintSpirit (ERC-721)    |
+          | <------------------------------------> |  joinGroup               |
+          |                                        |  request/confirmLink     |
+          +------- reads events: SpiritMinted,---- +                          |
+                   LinkRequested/Confirmed                                    |
+                                                                              
+                                                   +--------------------------+
+                                                   |  Semaphore (PSE-deployed)|
+                                                   |  0x8A1fd199...c693D      |
+                                                   +--------------------------+
 ```
 
+An **optional** cache lives in Supabase Postgres (`Expression` and `Link` tables). The `owner` column now stores the stealth address instead of the main wallet. Feed queries hit the cache for speed, and a `scripts/recover-missing-mints.mjs` script can rebuild rows from on-chain events + IPFS if the cache ever drifts.
+
+---
+
+### Key Flows
+
+#### 1. Join the Wizper group (`/join`, once per user)
+
+```
+Client:
+  identity = new Identity()                      // random 32B secret
+  localStorage["wizper_semaphore_identity_v1"] = identity.export()
+  stealthAddr = privateKeyToAccount(
+      keccak256("wizper-stealth-v1:" + secret)
+  ).address
+
+  // User backs up secret (export JSON or copy), then:
+  await writeContract(WizperAnonymous, "joinGroup", [identity.commitment])
+  // ← main wallet signs one tx. Chain only sees "some wallet joined Wizper".
+```
+
+#### 2. Anonymous mint (`/create`)
+
+```
+1. Upload text + SVG + metadata to IPFS
+   → tokenURI = "ipfs://{cid}"
+2. Pull MemberJoined events, rebuild Semaphore group locally
+3. Generate Semaphore proof binding:
+     - stealthOwner (member in Merkle tree)
+     - tokenURI + expressionHash + emotion (signal)
+     - scope = expressionHash (same scope = same identity cannot mint same text twice)
+4. POST /api/relay/mint { proof, stealthOwner, tokenURI, ... }
+5. Relayer wallet calls mintSpirit(...)
+6. Contract: Semaphore.validateProof → mint NFT to stealthOwner
+7. Frontend parses SpiritMinted event for tokenId, writes DB cache
+```
+
+**Main wallet signs nothing.** From the user's point of view it's just "Publishing… → Done."
+
+#### 3. Link two spirits
+
+Links use **stealth-key ECDSA signatures**, not ZK:
+
+```
+Initiator (owner of tokenA):
+  stealthKey_A.signMessage(
+    keccak256(abi.encode(LINK_REQUEST_TYPEHASH, chainId, contract, A, B))
+  )
+  → POST /api/relay/link { kind: 'request', fromTokenId: A, toTokenId: B, sig }
+
+Contract requestLink(A, B, sig):
+  require(ecrecover(digest) == ownerOf(A))       // stealth address is public
+  links[linkId(A,B)].status = Pending
+
+Acceptor (owner of tokenB, same flow):
+  → POST /api/relay/link { kind: 'confirm', ... }
+
+Contract confirmLink(A, B, sig):
+  require(ecrecover == ownerOf(B))
+  links[...].status = Confirmed
+```
+
+Smart UX: if user B sees an inbound request on their spirit detail page, the button reads **"Accept Link"** — one click completes the handshake, avoiding a wasteful reverse-direction duplicate.
+
+---
+
+<a id="tech-stack-1"></a>
 ### Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| Animations | Framer Motion |
-| Wallet | wagmi 3, viem 2 |
-| Smart Contracts | Solidity 0.8.20+, OpenZeppelin |
-| Deployment | Remix IDE on Base Sepolia (Chain ID: 84532) |
-| Database | Prisma 5 + Supabase PostgreSQL |
-| Storage | IPFS via Pinata SDK |
-| ZK Privacy | Hash-based Commitment Scheme (keccak256) |
-| Frontend Hosting | Vercel (automatic CI/CD) |
-| Fonts | Press Start 2P, Zpix |
+| Layer | Tech |
+|---|---|
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 |
+| Wallet | wagmi 3, viem 2, MetaMask / WalletConnect |
+| Anonymous ZK | `@semaphore-protocol/identity`, `group`, `proof` (v4) |
+| Contracts | Solidity 0.8.23+, OpenZeppelin v5 (ERC-721 Enumerable + URIStorage), Semaphore v4 |
+| Deployment | Remix → Base Sepolia |
+| Emotion detection | HuggingFace Inference Providers router<br>— English: `j-hartmann/emotion-english-distilroberta-base`<br>— Chinese: `Johnson8187/Chinese-Emotion`<br>Auto language routing by CJK char detection |
+| Storage | IPFS via Pinata (SVG + ERC-721 metadata with full `text`) |
+| Database | Prisma 5 + Supabase Postgres (**cache**, not source of truth) |
+| Relayer | Node hot wallet (env var), pays gas |
 
 ---
 
-### Core Features
+### Smart Contract
 
-#### 1. Anonymous Expression Creation
-Users write anonymous expressions (up to 280 characters). An emotion detection algorithm automatically categorizes each expression into one of 6 emotions, and a unique wizard character is procedurally generated from the text.
+Primary: **[contracts/WizperAnonymous.sol](contracts/WizperAnonymous.sol)**.
 
-#### 2. Data Persistence (Database)
-- **Un-minted expressions** — stored in database only, user can delete anytime
-- **Minted expressions** — on-chain + IPFS + database, visible in public Feed, cannot be deleted (but can be hidden)
-- Data is isolated by wallet address; disconnecting wallet hides other users' data
+Deployed on Base Sepolia, references PSE's production Semaphore at `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D`.
 
-#### 3. NFT Minting
-Expressions can be minted as ERC-721 NFTs. The wizard SVG image and metadata are uploaded to IPFS, and the NFT's `tokenURI` points to the immutable IPFS content.
-
-#### 4. ZK Privacy Protection
-When minting, a zero-knowledge commitment is submitted on-chain. This allows users to later prove they authored an expression without revealing their wallet address.
-
-#### 5. Connection Graph
-Users can request "magical links" between expressions that share similar emotions. Confirmed connections are visualized in a force-directed graph with animated particles.
-
-#### 6. Token Economy
-The platform is powered by $WIZPER (ERC-20), with burn mechanics for minting and linking, and daily sign-in rewards.
-
-#### 7. My Expressions
-The "Mine" page shows all expressions owned by the connected wallet (minted + un-minted), with filter, delete, and hide actions.
-
-#### 8. Daily Reward
-The home page offers a daily check-in to claim 6 $WIZPER, limited to once every 24 hours.
-
----
-
-### Smart Contracts
-
-#### WizperToken ($WIZPER) — ERC-20
-
-**Address:** `0x4b86023466B8098aAE12D399543e35B42E0ab2Ce`
-
-An ERC-20 token with burn mechanics, built on OpenZeppelin's `ERC20`, `ERC20Burnable`, and `Ownable`.
+#### State
 
 ```solidity
-uint256 public constant MINT_COST    =  5 * 10 ** 18;  // 5 WIZPER to mint NFT
-uint256 public constant LINK_COST    =  2 * 10 ** 18;  // 2 WIZPER to request link
-uint256 public constant DAILY_REWARD =  6 * 10 ** 18;  // 6 WIZPER daily sign-in
-uint256 public constant MAX_SUPPLY   = 100_000_000 * 10 ** 18;
+ISemaphore public immutable semaphore;
+uint256 public groupId;                        // fixed after initialize()
+bool public immutable soulbound;               // ctor param, true in prod
+
+// NFT
+mapping(uint256 => SpiritData) public spirits;  // tokenId → hash/emotion/time
+mapping(bytes32 => bool) public hashMinted;    // prevents duplicate text mint
+
+// Link
+enum LinkStatus { None, Pending, Confirmed }
+mapping(bytes32 => LinkData) public links;     // keccak(from,to) → status
+mapping(uint256 => bytes32[]) public linksByToken;
 ```
 
-| Function | Description |
-|----------|-------------|
-| `payForMint()` | Burns 5 WIZPER from caller. Called before NFT minting. |
-| `payForLink()` | Burns 2 WIZPER from caller. Called before link request. |
-| `claimDailyReward()` | Mints 6 WIZPER to caller. 24-hour cooldown enforced via `lastClaimTime` mapping. |
-| `airdrop(to, amount)` | Owner-only. Mints tokens to a target address (capped by `MAX_SUPPLY`). |
+#### Functions
 
-**Initial Distribution:** 10,000,000 WIZPER (10%) minted to deployer at construction.
+| Function | Caller | Effect |
+|---|---|---|
+| `initialize()` | owner, once | Creates a fresh Semaphore group with this contract as admin |
+| `joinGroup(uint256 commitment)` | any address | Inserts identity commitment into the Merkle tree |
+| `mintSpirit(proof, stealthOwner, uri, expressionHash, emotion)` | usually relayer | Verifies proof + mints ERC-721 to stealth address |
+| `requestLink(from, to, sig)` | usually relayer | Checks signature is from ownerOf(from), marks Pending |
+| `confirmLink(from, to, sig)` | usually relayer | Checks signature is from ownerOf(to), marks Confirmed |
 
----
-
-#### WizperNFT — ERC-721
-
-**Address:** `0xE917Ba47a22c15840eAEC0a644330F76C2edaD95`
-
-An ERC-721 NFT contract where each token represents a minted expression.
+#### Events
 
 ```solidity
-struct ExpressionData {
-    bytes32 expressionHash;   // keccak256 of the expression text
-    string  emotion;          // anger | sadness | joy | fear | love | confusion
-    uint256 mintedAt;         // block.timestamp at mint time
-}
+event GroupInitialized(uint256 indexed groupId);
+event MemberJoined(uint256 identityCommitment);
+event SpiritMinted(uint256 indexed tokenId, address indexed stealthOwner,
+                   bytes32 expressionHash, string emotion);
+event LinkRequested(bytes32 indexed linkId, uint256 indexed fromTokenId,
+                    uint256 indexed toTokenId);
+event LinkConfirmed(bytes32 indexed linkId, uint256 indexed fromTokenId,
+                    uint256 indexed toTokenId);
 ```
 
-| Function | Description |
-|----------|-------------|
-| `mintExpression(to, uri, expressionHash, emotion)` | Mints a new NFT. `hashMinted` mapping prevents duplicate mints. |
-| `getExpression(tokenId)` | Returns the expression data for a given token. |
-| `totalMinted()` | Returns the total number of minted NFTs. |
+Frontend rebuilds **all** state (group membership, my spirits, link graph) from these events.
 
 ---
 
-#### WizperZKVerifier — Zero-Knowledge Verifier
+### Database Role
 
-**Address:** `0x128C66125fD13910948191e23f0b5a2531D161E7`
-
-Implements a hash-based commitment scheme for anonymous authorship proof.
-
-| Function | Description |
-|----------|-------------|
-| `submitCommitment(commitment, expressionHash)` | Stores a ZK commitment on-chain during minting. |
-| `verifyProof(expressionHash, nullifier, author)` | Verifies ownership by reconstructing the commitment. Single-use per nullifier. |
-| `isVerified(expressionHash)` | Checks if an expression has been ZK-verified. |
-
----
-
-### Zero-Knowledge Proof System
-
-Wizper uses a **hash-based commitment scheme** to allow users to prove they authored an expression without revealing their wallet address.
-
-#### Phase 1: Commitment (during Mint)
-
-```
-Input:
-  expression_text  — the raw expression string
-  author           — user's wallet address (private, not stored)
-
-Process:
-  1. expressionHash  = keccak256(expression_text)
-  2. nullifier       = random 32 bytes (generated client-side via crypto.getRandomValues)
-  3. commitment      = keccak256(expressionHash || nullifier || author)
-                       using abi.encodePacked (Solidity-compatible)
-
-On-chain:
-  4. submitCommitment(commitment, expressionHash) → stores commitment
-
-Client-side:
-  5. Save nullifier to localStorage (user's secret key for later proof)
-```
-
-#### Phase 2: Verification (proving ownership)
-
-```
-Input:
-  expressionHash  — public, from the NFT
-  nullifier       — user's secret, from localStorage
-  author          — the address claiming ownership
-
-Process:
-  1. Reconstruct: commitment' = keccak256(expressionHash || nullifier || author)
-  2. Check: commitment' exists in commitments mapping
-  3. Check: nullifier not previously used (replay protection)
-  4. Mark nullifier as used, mark expression as verified
-
-Output:
-  valid = true  → proves (author) wrote (expressionHash) without on-chain link
-```
-
-#### Security Properties
-
-| Property | Guarantee |
-|----------|-----------|
-| **Hiding** | The commitment reveals nothing about the author. Given `commitment = H(expressionHash, nullifier, author)`, an observer cannot reverse the hash to find `author`. |
-| **Binding** | The commitment is bound to a specific (expression, author) pair. A different author cannot produce the same commitment without knowing the nullifier. |
-| **Replay Protection** | Each nullifier can only be used once. `nullifierUsed[H(nullifier)]` prevents reuse. |
-| **Non-correlation** | Multiple expressions by the same author have independent random nullifiers, making them unlinkable. |
-
-#### Formulas
-
-```
-expressionHash = keccak256(bytes(expression_text))
-
-nullifier = crypto.getRandomValues(new Uint8Array(32))
-
-commitment = keccak256(abi.encodePacked(
-    bytes32 expressionHash,
-    bytes32 nullifier,
-    address author
-))
-```
-
----
-
-### Procedural Wizard Generation
-
-Each expression deterministically generates a unique wizard character as an SVG. The generation is purely based on the text content — the same text always produces the same wizard.
-
-#### Hash Function
-
-```javascript
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-```
-
-#### Trait Selection
-
-| Trait | Options | Count | Selection |
-|-------|---------|-------|-----------|
-| Robe Color | purple, teal, crimson, blue, gold, green, brown, silver | 8 | `(h + 0) % 8` |
-| Skin Color | 5 skin tones | 5 | `(h + 7) % 5` |
-| Beard Color | white, grey, brown, dark, black, gold, red | 7 | `(h + 13) % 7` |
-| Staff Top | orb, crystal, flame, star, crescent | 5 | `(h + 19) % 5` |
-| Hat Style | pointed, wide, hooded, crown | 4 | `(h + 23) % 4` |
-| Eye Type | dot, glowing, highlight, narrow | 4 | `h % 4` |
-| Has Beard | yes/no | 2 | `h % 3 !== 0` (67%) |
-| Has Staff | yes/no | 2 | `h % 4 !== 0` (75%) |
-| Has Cat | yes/no | 2 | `h % 7 === 0` (14%) |
-
-**Total Combinations:** `8 x 5 x 7 x 5 x 4 x 4 x 2 x 2 x 2 = 179,200 unique wizards`
-
----
-
-### Emotion Detection Algorithm
-
-Expressions are classified into 6 emotions using keyword matching:
-
-| Emotion | Keywords | Icon |
-|---------|----------|------|
-| Anger | angry, furious, rage, hate, scream, mad, frustrated | 🔥 |
-| Sadness | sad, cry, tears, lonely, miss, depressed, grief, alone | 💧 |
-| Joy | happy, smile, laugh, amazing, wonderful, joy, glad, bright, courage | ✨ |
-| Fear | afraid, scared, fear, anxiety, worry, nervous, dread, panic | 👁️ |
-| Love | love, heart, crush, letter, kiss, adore, romance, dear | 💜 |
-| Confusion | confused, lost, why, spinning, understand, unsure, uncertain | 🌀 |
-
-If no keywords match, the default emotion is **confusion**.
-
----
-
-### NFT Minting Flow
-
-The complete minting process involves 5 steps:
-
-```
-User clicks "Mint NFT"
-        |
-        v
-[1] Upload to IPFS (off-chain)
-    - Serialize wizard SVG → POST /api/upload → Pinata
-    - Upload SVG image → get imageCID
-    - Build ERC-721 metadata JSON
-    - Upload metadata → tokenURI = "ipfs://{metadataCID}"
-        |
-        v
-[2] Submit ZK Commitment (on-chain tx #1)
-    - Generate random nullifier
-    - Compute commitment = keccak256(expressionHash, nullifier, author)
-    - Call WizperZKVerifier.submitCommitment()
-    - Save nullifier to localStorage
-        |
-        v
-[3] Pay with WIZPER (on-chain tx #2)
-    - Call WizperToken.payForMint()
-    - Burns 5 WIZPER from user's balance
-        |
-        v
-[4] Mint NFT (on-chain tx #3)
-    - Call WizperNFT.mintExpression()
-    - NFT minted to user's address
-        |
-        v
-[5] Update Database
-    - PATCH /api/expressions → mark minted=true
-    - Refresh Feed and Mine pages
-        |
-        v
-    Mint Complete
-```
-
----
-
-### IPFS Storage
-
-NFT assets are stored on IPFS via [Pinata](https://www.pinata.cloud/) for permanent, decentralized storage.
-
-#### NFT Metadata Format (ERC-721 Standard)
-
-```json
-{
-  "name": "Wizper Spirit #c-1713100000000",
-  "description": "An anonymous expression transformed into a magical wizard spirit. Emotion: joy",
-  "image": "ipfs://QmImageCID...",
-  "attributes": [
-    { "trait_type": "Emotion", "value": "joy" },
-    { "trait_type": "Text Length", "value": 142 },
-    { "trait_type": "Created", "value": "2026-04-14T..." }
-  ]
-}
-```
-
----
-
-### Token Economics
-
-#### $WIZPER Token Overview
-
-| Parameter | Value |
-|-----------|-------|
-| Name | Wizper |
-| Symbol | WIZPER |
-| Standard | ERC-20 |
-| Max Supply | 100,000,000 WIZPER |
-| Initial Mint | 10,000,000 (10% to deployer) |
-| Decimals | 18 |
-
-#### Burn Mechanics (Deflationary)
-
-| Action | Cost | Mechanism |
-|--------|------|-----------|
-| Mint Expression NFT | 5 WIZPER | Burned via `payForMint()` |
-| Request Link | 2 WIZPER | Burned via `payForLink()` |
-
-#### Reward Mechanics (Inflationary)
-
-| Action | Reward | Constraint |
-|--------|--------|-----------|
-| Daily Sign-in | 6 WIZPER | 24-hour cooldown per address, capped by MAX_SUPPLY |
-| Airdrop | Variable | Owner-only, capped by MAX_SUPPLY |
-
-```
-Effective Supply = Initial Mint + Daily Rewards + Airdrops - Mint Burns - Link Burns
-```
-
----
-
-### Data Architecture
-
-Wizper uses Prisma ORM + Supabase PostgreSQL for data persistence.
-
-#### Data Models
+The DB is an **optional cache, not source of truth**. Everything can be reconstructed from on-chain events + IPFS.
 
 ```prisma
 model Expression {
-  id        String    @id
-  text      String
-  emotion   String                    // anger | sadness | joy | fear | love | confusion
-  minted    Boolean   @default(false)
-  hidden    Boolean   @default(false)
-  owner     String                    // wallet address (lowercase)
-  tokenURI  String?                   // IPFS URI (set after mint)
-  txHash    String?                   // mint transaction hash
-  createdAt DateTime  @default(now())
+  id        String   @id         // client-generated c-{timestamp} or recovered-{tokenId}
+  text      String                // full text (redundant; also in IPFS metadata)
+  emotion   String                // anger | sadness | joy | fear | confusion
+  minted    Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  owner     String                // stealth address (lowercase)
+  tokenId   String?               // ERC-721 id, decimal string
+  tokenURI  String?
+  txHash    String?
+  createdAt DateTime @default(now())
   mintedAt  DateTime?
 }
 
@@ -917,143 +628,163 @@ model Link {
 }
 ```
 
-#### API Routes
+**Note**: the `Link` table is **no longer written** by the anonymous flow. Link UI reads directly from chain events (`LinkRequested` / `LinkConfirmed`). The table is kept for migration backwards compatibility.
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/expressions` | GET | Public Feed (minted + not hidden) |
-| `/api/expressions` | POST | Create new expression (saved to DB) |
-| `/api/expressions` | PATCH | Update expression (mint, hide) |
-| `/api/expressions` | DELETE | Delete un-minted expression (owner only) |
-| `/api/expressions/mine` | GET | Get all expressions for a wallet |
-| `/api/links` | GET/POST/PATCH | Link management |
-| `/api/upload` | POST | IPFS upload (SVG + metadata) |
-
-#### Data Flow Rules
-
-| State | Storage | Visibility | Deletable | Hideable |
-|-------|---------|-----------|-----------|----------|
-| Un-minted | Database only | Mine page only | Yes | No |
-| Minted | Database + On-chain + IPFS | Feed + Mine | No | Yes |
-| Hidden | Database + On-chain + IPFS | Mine only | No | — |
+**Recovery**: if a mint lands on-chain but the DB write fails (e.g. 500 on POST), run [`scripts/recover-missing-mints.mjs`](scripts/recover-missing-mints.mjs) to rebuild rows from events + IPFS.
 
 ---
 
+<a id="project-structure-1"></a>
 ### Project Structure
 
 ```
 wizper/
-├── contracts/                    # Solidity smart contracts
-│   ├── WizperToken.sol           # $WIZPER ERC-20 token
-│   ├── WizperNFT.sol             # Expression NFT (ERC-721)
-│   └── WizperZKVerifier.sol      # ZK commitment verifier
+├── contracts/
+│   ├── WizperAnonymous.sol          # ★ main contract (Phase 1)
+│   ├── WizperToken.sol              # kept: used by home-page daily reward
+│   ├── ZK_POC_GUIDE.md              # Phase 0 POC deployment guide
+│   └── legacy/                      # v0 artifacts, not deployed, kept for reference
+│       ├── README.md
+│       ├── WizperNFT.sol
+│       ├── WizperZKVerifier.sol
+│       └── DEPLOY_GUIDE.md
 │
-├── prisma/
-│   └── schema.prisma             # Database model definitions
+├── scripts/
+│   ├── gen-relayer.mjs              # generate relayer private key
+│   ├── recover-missing-mints.mjs    # events → DB rebuild
+│   ├── dedupe-expressions.mjs       # DB dedupe (same owner+text)
+│   └── debug-*.mjs                  # misc debug helpers
+│
+├── prisma/schema.prisma
 │
 ├── src/
-│   ├── app/                      # Next.js App Router
-│   │   ├── page.tsx              # Home page (with daily reward)
-│   │   ├── create/page.tsx       # Expression creation
-│   │   ├── feed/page.tsx         # Expression gallery (public Feed)
-│   │   ├── my/page.tsx           # My Expressions (management)
-│   │   ├── connections/page.tsx  # Connection graph visualization
-│   │   ├── confession/[id]/      # Expression detail + mint
-│   │   └── api/                  # API routes
-│   │       ├── expressions/      # Expression CRUD
-│   │       ├── links/            # Link management
-│   │       └── upload/           # IPFS upload
+│   ├── app/
+│   │   ├── page.tsx                 # home
+│   │   ├── join/page.tsx            # ★ identity onboarding
+│   │   ├── create/page.tsx          # anonymous mint
+│   │   ├── feed/page.tsx            # public feed
+│   │   ├── my/page.tsx              # owned by stealth address
+│   │   ├── connections/page.tsx     # link graph + inbound badge
+│   │   ├── confession/[id]/page.tsx # detail + link actions
+│   │   ├── zk-poc/page.tsx          # Phase 0 POC test page (dev only)
+│   │   └── api/
+│   │       ├── emotion/             # HuggingFace proxy (bilingual)
+│   │       ├── expressions/         # cache CRUD
+│   │       ├── relay/
+│   │       │   ├── mint/            # ★ anonymous mint relayer
+│   │       │   └── link/            # ★ link request/confirm relayer
+│   │       └── upload/              # Pinata IPFS upload
 │   │
-│   ├── components/               # React components
-│   │   ├── confession/           # Create form, wizard character, cards
-│   │   ├── connection/           # Connection graph, link cards
-│   │   ├── layout/               # Navbar, pixel landscape, particles
-│   │   └── ui/                   # Buttons, badges, panels, etc.
+│   ├── components/
+│   │   ├── confession/              # create form / wizard / card
+│   │   ├── connection/              # force-directed graph + link card
+│   │   ├── layout/                  # Navbar (with inbound badge)
+│   │   └── ui/
 │   │
 │   ├── context/
-│   │   ├── AppContext.tsx         # App state + contract interactions
-│   │   └── ThemeContext.tsx       # Day/night theme
+│   │   └── AppContext.tsx           # ★ central state hub
 │   │
 │   └── lib/
-│       ├── db.ts                 # Prisma client
-│       ├── zk.ts                 # ZK commitment utilities
-│       ├── pinata.ts             # Pinata IPFS client
-│       ├── wagmi.ts              # wagmi configuration
-│       ├── emotions.ts           # Emotion detection + palettes
-│       └── contracts/            # Contract ABIs + address config
+│       ├── semaphore.ts             # identity + proof helpers
+│       ├── stealth.ts               # stealth address derivation
+│       ├── link.ts                  # link signatures + linkId
+│       ├── emotions.ts              # UI palette + emotion labels
+│       ├── contracts/
+│       │   ├── anonymousAbi.ts
+│       │   └── config.ts
+│       └── legacy/                  # v0 artifacts, not imported
+│           ├── README.md
+│           └── zk.ts                # old hash-commitment helpers
 │
-├── .env.local                    # Environment variables (not committed)
+├── .env.local
 └── package.json
 ```
 
 ---
 
-### Setup & Deployment
+### Running Locally
 
 #### Prerequisites
 
-- Node.js 18+
-- pnpm
-- MetaMask browser extension
-- Base Sepolia testnet ETH ([faucet](https://www.alchemy.com/faucets/base-sepolia))
+- Node 18+, pnpm
+- MetaMask on Base Sepolia (chainId 84532)
+- Small amount of Base Sepolia ETH on the main wallet (used only for `joinGroup`)
+- Pinata JWT, HuggingFace API token, Supabase `DATABASE_URL`
 
-#### 1. Install Dependencies
+#### Environment variables (`.env.local`)
+
+```env
+# Chain
+NEXT_PUBLIC_CHAIN_ID=84532
+NEXT_PUBLIC_WIZPER_ANONYMOUS_ADDRESS=0x...
+NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK=40295190       # optional, narrows event scan
+
+# Relayer hot wallet (server-side, no NEXT_PUBLIC_ prefix)
+RELAYER_PRIVATE_KEY=0x...
+
+# IPFS
+PINATA_JWT=...
+NEXT_PUBLIC_PINATA_GATEWAY=your-gateway.mypinata.cloud
+
+# DB
+DATABASE_URL=postgresql://...
+
+# Emotion detection
+HUGGINGFACE_API_TOKEN=hf_...
+```
+
+#### Boot sequence
 
 ```bash
 pnpm install
-```
+npx prisma db push          # create/sync tables
+pnpm prisma generate        # generate Prisma client
 
-#### 2. Deploy Smart Contracts
+# Generate relayer wallet
+node scripts/gen-relayer.mjs
+# Save the address, fund it with ~0.05 Base Sepolia ETH
+# Put the private key in RELAYER_PRIVATE_KEY
 
-Open [Remix IDE](https://remix.ethereum.org) and deploy each contract to Base Sepolia:
-
-1. **WizperToken.sol** — Compile with Solidity 0.8.20+, deploy via MetaMask
-2. **WizperNFT.sol** — Same process
-3. **WizperZKVerifier.sol** — Same process
-
-#### 3. Configure Environment
-
-```bash
-cp .env.local.example .env.local
-```
-
-```env
-NEXT_PUBLIC_WIZPER_TOKEN_ADDRESS=0x...
-NEXT_PUBLIC_WIZPER_NFT_ADDRESS=0x...
-NEXT_PUBLIC_WIZPER_ZK_ADDRESS=0x...
-NEXT_PUBLIC_CHAIN_ID=84532
-PINATA_JWT=your_pinata_jwt
-NEXT_PUBLIC_PINATA_GATEWAY=your-gateway.mypinata.cloud
-DATABASE_URL=postgresql://...  # Supabase connection string
-```
-
-#### 4. Initialize Database
-
-```bash
-npx prisma db push
-```
-
-#### 5. Run Development Server
-
-```bash
 pnpm dev
 ```
 
-Open http://localhost:3000
+#### Deploy contract (once)
 
-#### 6. Deploy to Vercel
+1. Open Remix, paste [contracts/WizperAnonymous.sol](contracts/WizperAnonymous.sol)
+2. Compiler 0.8.23+, Environment: `Injected Provider - MetaMask` (Base Sepolia)
+3. Constructor args:
+   - `semaphoreAddress`: `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D`
+   - `_soulbound`: `true`
+4. After deployment call `initialize()` once (creates the Semaphore group)
+5. Set the contract address and deploy block in `.env.local`
 
-1. Push code to GitHub
-2. Import repository on [Vercel](https://vercel.com)
-3. Add all environment variables
-4. Once deployed, every push to main triggers automatic redeployment
+Detailed walk-through in [contracts/ZK_POC_GUIDE.md](contracts/ZK_POC_GUIDE.md).
 
 ---
 
-### Deployed Contracts (Base Sepolia)
+### Known Limitations
 
-| Contract | Address | Explorer |
-|----------|---------|----------|
-| WizperToken | `0x4b86023466B8098aAE12D399543e35B42E0ab2Ce` | [View](https://sepolia.basescan.org/address/0x4b86023466B8098aAE12D399543e35B42E0ab2Ce) |
-| WizperNFT | `0xE917Ba47a22c15840eAEC0a644330F76C2edaD95` | [View](https://sepolia.basescan.org/address/0xE917Ba47a22c15840eAEC0a644330F76C2edaD95) |
-| WizperZKVerifier | `0x128C66125fD13910948191e23f0b5a2531D161E7` | [View](https://sepolia.basescan.org/address/0x128C66125fD13910948191e23f0b5a2531D161E7) |
+**Open issues at end of Phase 1:**
+
+- **Event scanning uses public RPC**, which caps `eth_getLogs` at 10k blocks per call. Mainnet needs Alchemy or a self-hosted node.
+- **No indexer**. Feed/links rely on client-side event scans; under high chain throughput the UI becomes slow.
+- **Identity backup UX is rough.** If a user clears localStorage without exporting their secret, they permanently lose access to their spirits.
+- **Anti-sybil**: `joinGroup` accepts any address with any commitment. Before mainnet, add hCaptcha / WorldID / similar.
+- **The "love" emotion was removed.** The current models don't output it, so legacy data mapping it falls back to other categories.
+- **Legacy code** now lives under `contracts/legacy/` and `src/lib/legacy/` as preserved specimens; see each folder's README.
+
+**Not a limitation (design choice):**
+
+- Text is stored publicly in IPFS metadata: chosen trade-off for readability on third-party marketplaces.
+- DB retained as a cache: speeds up feed rendering, but never trusted as truth.
+- Link does not use ZK: the stealth address is already public as `ownerOf`, so plain ECDSA is sufficient.
+
+---
+
+### Credits
+
+- [Semaphore Protocol](https://semaphore.pse.dev/) (PSE) — anonymous group membership ZK primitive
+- [OpenZeppelin Contracts v5](https://www.openzeppelin.com/contracts) — battle-tested ERC-721 base
+- [Pinata](https://pinata.cloud/) — IPFS pinning
+- [HuggingFace](https://huggingface.co/) — emotion classification models
+- [Base](https://base.org/) — L2 with cheap gas, where everything runs
