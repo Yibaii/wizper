@@ -9,7 +9,7 @@ import ZKShield from '@/components/ui/ZKShield';
 import WizardCharacter from './WizardCharacter';
 import MintBadge from '@/components/ui/MintBadge';
 import { useApp } from '@/context/AppContext';
-import { detectEmotion } from '@/lib/emotions';
+
 
 type Phase = 'writing' | 'transforming' | 'result';
 
@@ -25,10 +25,44 @@ export default function CreateForm() {
   const maxLen = 280;
   const canSubmit = text.trim().length >= 4 && text.length <= maxLen;
 
-  const emotion = text.trim() ? detectEmotion(text) : 'confusion';
+
+  const [emotion, setEmotion] = useState<string>('confusion');
+  const [emotionLoading, setEmotionLoading] = useState(false);
+
+  async function fetchEmotion(text: string) {
+    if (!text.trim()) {
+      setEmotion('confusion');
+      return;
+    }
+    setEmotionLoading(true);
+    try {
+      const resp = await fetch('/api/emotion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const result = await resp.json();
+      // result: [{label: "joy", score: 0.98}, ...]
+      if (Array.isArray(result) && result.length > 0) {
+        setEmotion(result[0].label || 'confusion');
+      } else {
+        setEmotion('confusion');
+      }
+    } catch {
+      setEmotion('confusion');
+    } finally {
+      setEmotionLoading(false);
+    }
+  }
+
+  // 自动检测情绪
+  function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setText(e.target.value);
+    fetchEmotion(e.target.value);
+  }
 
   async function handleTransform() {
-    if (!canSubmit) return;
+    if (!canSubmit || emotionLoading) return;
     setPhase('transforming');
 
     const id = `c-${Date.now()}`;
@@ -84,7 +118,7 @@ export default function CreateForm() {
             <ScrollPanel className="mb-4">
               <textarea
                 value={text}
-                onChange={e => setText(e.target.value)}
+                onChange={handleTextChange}
                 placeholder="Write your confession here…"
                 maxLength={maxLen}
                 rows={6}
@@ -95,7 +129,7 @@ export default function CreateForm() {
                   {text.length}/{maxLen}
                 </span>
                 <span className="font-pixel text-[8px] text-[#7a5a40]/70">
-                  ✦ Content will be anonymously encrypted on-chain
+                  {emotionLoading ? 'Detecting emotion…' : `✦ Detected: ${emotion}`}
                 </span>
               </div>
             </ScrollPanel>
