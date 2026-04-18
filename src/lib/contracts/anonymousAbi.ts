@@ -12,6 +12,7 @@ export const WIZPER_ANONYMOUS_ABI = [
   // Reads — spirits + meta
   'function groupId() view returns (uint256)',
   'function initialized() view returns (bool)',
+  'function semaphore() view returns (address)',
   'function soulbound() view returns (bool)',
   'function totalMinted() view returns (uint256)',
   'function balanceOf(address owner) view returns (uint256)',

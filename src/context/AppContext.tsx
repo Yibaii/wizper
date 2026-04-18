@@ -15,6 +15,11 @@ import { type Confession, type Link } from '@/data/mock';
 import { CONTRACT_ADDRESSES } from '@/lib/contracts/config';
 import { WIZPER_TOKEN_ABI } from '@/lib/contracts/abis';
 import { WIZPER_ANONYMOUS_ABI } from '@/lib/contracts/anonymousAbi';
+
+const SEMAPHORE_GROUPS_ABI = parseAbi([
+  'function hasMember(uint256 groupId, uint256 identityCommitment) view returns (bool)',
+  'function getMerkleTreeSize(uint256 groupId) view returns (uint256)',
+]);
 import {
   loadIdentity,
   createIdentity as semaphoreCreateIdentity,
@@ -273,39 +278,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      // Scan MemberJoined events in chunks (Base Sepolia public RPC limits to 10k range).
-      const latest = await publicClient.getBlockNumber();
-      const startBlock =
-        ANON_DEPLOY_BLOCK ?? (latest > BigInt(50_000) ? latest - BigInt(50_000) : BigInt(0));
-      const CHUNK = BigInt(9_500);
-
-      const commitments: bigint[] = [];
-      let cursor = startBlock;
-      while (cursor <= latest) {
-        const to = cursor + CHUNK > latest ? latest : cursor + CHUNK;
-        const logs = await publicClient.getLogs({
+      // Query Semaphore directly: hasMember / getMerkleTreeSize on the
+      // Semaphore contract. This avoids scanning MemberJoined events, which
+      // is both slow and bounded by RPC block-range limits (and would miss
+      // joins older than the scan window if NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK
+      // is unset).
+      const [semaphoreAddr, gid] = await Promise.all([
+        publicClient.readContract({
           address: ANON_ADDRESS,
-          event: {
-            type: 'event',
-            name: 'MemberJoined',
-            inputs: [{ type: 'uint256', name: 'identityCommitment' }],
-          },
-          fromBlock: cursor,
-          toBlock: to,
-        });
-        for (const l of logs) {
-          const c = (l.args as { identityCommitment?: bigint }).identityCommitment;
-          if (typeof c === 'bigint') commitments.push(c);
-        }
-        cursor = to + BigInt(1);
-      }
+          abi: ANON_ABI_PARSED,
+          functionName: 'semaphore',
+        }) as Promise<Hex>,
+        publicClient.readContract({
+          address: ANON_ADDRESS,
+          abi: ANON_ABI_PARSED,
+          functionName: 'groupId',
+        }) as Promise<bigint>,
+      ]);
 
-      setMemberCount(commitments.length);
-      setIsMember(commitments.includes(identityObj.commitment));
+      const [member, size] = await Promise.all([
+        publicClient.readContract({
+          address: semaphoreAddr,
+          abi: SEMAPHORE_GROUPS_ABI,
+          functionName: 'hasMember',
+          args: [gid, identityObj.commitment],
+        }) as Promise<boolean>,
+        publicClient.readContract({
+          address: semaphoreAddr,
+          abi: SEMAPHORE_GROUPS_ABI,
+          functionName: 'getMerkleTreeSize',
+          args: [gid],
+        }) as Promise<bigint>,
+      ]);
+
+      setIsMember(member);
+      setMemberCount(Number(size));
     } catch (err) {
       console.error('[identity] refreshMembership failed:', err);
     }
-  }, [publicClient, identityObj, ANON_ADDRESS, ANON_DEPLOY_BLOCK]);
+  }, [publicClient, identityObj, ANON_ADDRESS, ANON_ABI_PARSED]);
 
   // Auto-refresh membership when identity becomes available or contract loaded.
   useEffect(() => {
@@ -341,6 +352,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!identityObj) throw new Error('No identity — create one first');
     if (!ANON_ADDRESS) throw new Error('Anonymous contract address not configured');
     if (!isConnected) throw new Error('Connect your wallet first');
+    // Guard: if this commitment is already a member, sending joinGroup again
+    // reverts inside Semaphore with LeafAlreadyExists. Gas estimation then
+    // surfaces as "exceeds max transaction gas limit". Refresh status and
+    // short-circuit with a clear message instead.
+    if (publicClient) {
+      try {
+        const [semaphoreAddr, gid] = await Promise.all([
+          publicClient.readContract({
+            address: ANON_ADDRESS,
+            abi: ANON_ABI_PARSED,
+            functionName: 'semaphore',
+          }) as Promise<Hex>,
+          publicClient.readContract({
+            address: ANON_ADDRESS,
+            abi: ANON_ABI_PARSED,
+            functionName: 'groupId',
+          }) as Promise<bigint>,
+        ]);
+        const already = (await publicClient.readContract({
+          address: semaphoreAddr,
+          abi: SEMAPHORE_GROUPS_ABI,
+          functionName: 'hasMember',
+          args: [gid, identityObj.commitment],
+        })) as boolean;
+        if (already) {
+          setIsMember(true);
+          throw new Error('This identity has already joined the group.');
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('already joined')) throw err;
+        // Ignore pre-flight read failures — fall through to the write.
+      }
+    }
     setJoining(true);
     try {
       const hash = await writeContractAsync({
