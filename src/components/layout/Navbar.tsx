@@ -24,6 +24,7 @@ export default function Navbar() {
   const { time, toggle: toggleTime } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showWalletPicker, setShowWalletPicker] = useState(false);
+  const [showWalletMenu, setShowWalletMenu] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -79,12 +80,36 @@ export default function Navbar() {
           </button>
 
           {mounted && (wallet.connected ? (
-            <button
-              onClick={wallet.disconnect}
-              className="font-pixel text-[8px] text-wizard-gold border border-wizard-gold/30 px-3 py-1.5 hover:bg-wizard-gold/10 transition-colors cursor-pointer"
-            >
-              {wallet.address}
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowWalletMenu(v => !v)}
+                className="font-pixel text-[8px] text-wizard-gold border border-wizard-gold/30 px-3 py-1.5 hover:bg-wizard-gold/10 transition-colors cursor-pointer"
+              >
+                {wallet.address}
+              </button>
+              {showWalletMenu && (
+                <div className="absolute right-0 top-full mt-2 border border-wizard-violet/30 bg-wizard-dark/95 backdrop-blur-md p-2 min-w-[180px] z-50">
+                  <button
+                    onClick={() => {
+                      if (wallet.address) navigator.clipboard?.writeText(wallet.address);
+                      setShowWalletMenu(false);
+                    }}
+                    className="block w-full text-left font-pixel text-[9px] text-gray-300 hover:text-wizard-cyan hover:bg-wizard-cyan/10 px-3 py-2 transition-colors cursor-pointer"
+                  >
+                    Copy Address
+                  </button>
+                  <button
+                    onClick={() => {
+                      wallet.disconnect();
+                      setShowWalletMenu(false);
+                    }}
+                    className="block w-full text-left font-pixel text-[9px] text-wizard-gold hover:bg-wizard-gold/10 px-3 py-2 transition-colors cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="relative">
               <PotionButton variant="violet" small onClick={() => setShowWalletPicker(!showWalletPicker)}>
