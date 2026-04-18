@@ -439,6 +439,18 @@ Wizper is a Web3 anonymous expression platform. Users write a short piece of tex
 
 ### Why
 
+Thanks to Tan Liren’s podcast.
+
+I consider myself a highly sensitive person. According to psychologist Elaine Aron, high sensitivity is an innate personality trait—about one in every five or six people has it. Yet this seemingly “rare” and “precious” trait rarely brings positive reinforcement. The world rewards efficiency, rewards emotional numbness, rewards not taking things personally. But we feel everything earlier, deeper, and more intensely. We get tired more easily, are more easily affected, more easily hurt by people and events around us. At the same time, we are also more easily moved—by light, by beauty, by the smallest, most insignificant things.
+
+So I want to create a platform—a place where anyone can express themselves freely and bravely. No one knows who you are (you are a wizard). Here, you can speak out all your inner conflicts, anxieties, self-doubt, fleeting thoughts, and subtle emotions.
+
+You don’t have to worry about being judged here. You don’t have to care about how others see you or what they think (because I’ve already banned the comment section).
+
+But I’m not antisocial. I still want to record the beauty in life. Even though our feelings are often misunderstood when we share them, sometimes someone suddenly gets you and sincerely says, “Me too.” I love that feeling. I want the “wizards” here to feel it too. That’s why I added a linking feature—so similar thoughts can find each other and be heard.
+
+Now, here’s the serious version:
+
 Traditional Web3 social apps post from the user's main wallet: the wallet is forever the `ownerOf(tokenId)` answer, and anyone (block explorer, Chainalysis, wallet profilers) can join "this account said X" with "this person is Y". Stacking a single hash commitment on top (the old Wizper design) only papers over the problem.
 
 **Wizper separates three anonymity concerns:**
