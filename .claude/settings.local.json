@@ -45,7 +45,21 @@
       "Bash(ls /Users/marvin/dev/wizard/README*)",
       "Bash(git mv:*)",
       "Bash(git rm:*)",
-      "Bash(ls /Users/marvin/dev/wizard/contracts/*.sol /Users/marvin/dev/wizard/contracts/*.md)"
+      "Bash(ls /Users/marvin/dev/wizard/contracts/*.sol /Users/marvin/dev/wizard/contracts/*.md)",
+      "Bash(node -e \"require\\('pptxgenjs'\\); console.log\\('ok'\\)\")",
+      "Bash(mkdir -p /Users/marvin/dev/wizard/slides)",
+      "Bash(npm init *)",
+      "Bash(npm install *)",
+      "Bash(node build.js)",
+      "Bash(python3 \"/Users/marvin/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/f3e30aeb-cb38-4445-a826-1b80e7a41a04/754d86c8-6438-494d-b6e4-09b7325eae7a/skills/pptx/scripts/office/soffice.py\" --headless --convert-to pdf Wizper-Pitch.pptx)",
+      "Bash(brew list *)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//Applications/**)",
+      "Bash(python3 -m markitdown Wizper-Pitch.pptx)",
+      "Bash(python3 -c \"from markitdown import MarkItDown; m = MarkItDown\\(\\); r = m.convert\\('Wizper-Pitch.pptx'\\); print\\(r.text_content\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(rm -f slide-*.jpg slide-*.png slide-*.jpeg)",
+      "Bash(qlmanage -t -s 1920 -o . Wizper-Pitch.pptx)"
     ]
   }
 }
