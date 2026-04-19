@@ -2,8 +2,8 @@
 @import "tailwindcss";
 
 @font-face {
-  font-family: 'Zpix';
-  src: url('https://cdn.jsdelivr.net/gh/AtelierArith/zpix-pixel-font@v3.1.5/dist/zpix.woff2') format('woff2');
+  font-family: 'Cubic 11';
+  src: url('/fonts/Cubic_11.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -23,8 +23,9 @@
   --color-wizard-pink: #ff6b9d;
   --color-wizard-blue: #00bfff;
 
-  --font-family-pixel: 'Press Start 2P', 'Zpix', monospace;
+  --font-family-pixel: 'Press Start 2P', 'Cubic 11', monospace;
   --font-family-pixel-en: 'Press Start 2P', monospace;
+  --font-family-pixel-cn: 'Cubic 11', 'Press Start 2P', monospace;
 }
 
 /* ---- Base ---- */
@@ -34,6 +35,13 @@ body {
   font-family: var(--font-family-pixel);
   font-size: 12px;
   line-height: 1.8;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  font-smooth: never;
+}
+
+:lang(zh), :lang(zh-CN), :lang(zh-Hans) {
+  font-family: var(--font-family-pixel-cn);
 }
 
 ::selection {
