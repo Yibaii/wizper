@@ -11,7 +11,7 @@ import ZKShield from '@/components/ui/ZKShield';
 import PotionButton from '@/components/ui/PotionButton';
 import LinkRequestCard from '@/components/connection/LinkRequestCard';
 import { EMOTION_LABELS } from '@/lib/emotions';
-import { formatDate } from '@/lib/utils';
+import { formatDate, hasCJK } from '@/lib/utils';
 import { linkId as computeLinkId } from '@/lib/link';
 import type { Confession } from '@/data/mock';
 
@@ -221,7 +221,13 @@ export default function ConfessionDetailPage({
 
         {/* Full text */}
         <ScrollPanel className="mb-6">
-          <p className="text-[12px] leading-relaxed whitespace-pre-wrap">
+          <p
+            className={`leading-relaxed whitespace-pre-wrap ${
+              hasCJK(confession.text)
+                ? 'text-[14px] pixel-bold tracking-wide'
+                : 'text-[12px]'
+            }`}
+          >
             {confession.text}
           </p>
         </ScrollPanel>

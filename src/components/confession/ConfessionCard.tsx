@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import WizardCharacter from './WizardCharacter';
 import MintBadge from '@/components/ui/MintBadge';
-import { truncate } from '@/lib/utils';
+import { truncate, hasCJK } from '@/lib/utils';
 import { EMOTION_LABELS } from '@/lib/emotions';
 import type { Confession } from '@/data/mock';
 
@@ -47,8 +47,15 @@ export default function ConfessionCard({ confession, index = 0 }: Props) {
               </span>
             </div>
 
-            {/* Text preview */}
-            <p className="text-[10px] leading-relaxed text-gray-300 mb-3 min-h-[36px]">
+            {/* Text preview — bump size + fake-bold for CJK so it visually
+                matches the chunky Press Start 2P weight on Latin previews. */}
+            <p
+              className={`leading-relaxed text-gray-300 mb-3 min-h-[36px] ${
+                hasCJK(confession.text)
+                  ? 'text-[12px] pixel-bold tracking-wide'
+                  : 'text-[10px]'
+              }`}
+            >
               {truncate(confession.text, 50)}
             </p>
 

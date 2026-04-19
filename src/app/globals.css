@@ -44,6 +44,12 @@ body {
   font-family: var(--font-family-pixel-cn);
 }
 
+/* Fake-bold for single-weight pixel fonts: shift a 1px copy to thicken strokes
+   without losing crisp pixel edges. Matches Press Start 2P's stroke weight. */
+.pixel-bold {
+  text-shadow: 1px 0 0 currentColor;
+}
+
 ::selection {
   background: var(--color-wizard-violet);
   color: #fff;
