@@ -19,6 +19,7 @@ import { WIZPER_ANONYMOUS_ABI } from '@/lib/contracts/anonymousAbi';
 const SEMAPHORE_GROUPS_ABI = parseAbi([
   'function hasMember(uint256 groupId, uint256 identityCommitment) view returns (bool)',
   'function getMerkleTreeSize(uint256 groupId) view returns (uint256)',
+  'function getMerkleTreeRoot(uint256 groupId) view returns (uint256)',
 ]);
 import {
   loadIdentity,
@@ -648,6 +649,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // 3. Generate Semaphore proof binding stealth address + tokenURI + text hash.
         const expressionHash = keccak256(toBytes(text));
         const group = buildGroup(commitments);
+
+        // Sanity check: local Merkle root must match the on-chain Semaphore
+        // group root. If it doesn't, our event scan missed members (usually
+        // because NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK isn't set and the join
+        // events are older than the 50k-block fallback window). Proof
+        // generation takes 2-6s, so catch it here instead of letting the
+        // relayer waste gas hitting Semaphore__MerkleTreeRootIsNotPartOfTheGroup.
+        const [semaphoreAddr, gid] = await Promise.all([
+          publicClient.readContract({
+            address: ANON_ADDRESS,
+            abi: ANON_ABI_PARSED,
+            functionName: 'semaphore',
+          }) as Promise<Hex>,
+          publicClient.readContract({
+            address: ANON_ADDRESS,
+            abi: ANON_ABI_PARSED,
+            functionName: 'groupId',
+          }) as Promise<bigint>,
+        ]);
+        const onchainRoot = (await publicClient.readContract({
+          address: semaphoreAddr,
+          abi: SEMAPHORE_GROUPS_ABI,
+          functionName: 'getMerkleTreeRoot',
+          args: [gid],
+        })) as bigint;
+        if (group.root !== onchainRoot) {
+          throw new Error(
+            `Local Merkle root does not match on-chain root. ` +
+            `Scanned ${commitments.length} member(s), local root=${group.root}, on-chain root=${onchainRoot}. ` +
+            `Set NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK in .env.local to the contract deploy block.`,
+          );
+        }
+
         const { proof } = await proveMint({
           identity: identityObj,
           group,
