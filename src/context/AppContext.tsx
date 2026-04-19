@@ -633,39 +633,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }) as Promise<bigint>,
         ]);
 
-        // 2. Scan Semaphore's MemberAdded events directly (filtered by our
-        //    groupId). Using Semaphore's event instead of our wrapper's
-        //    MemberJoined gives us the `index` field — lets us sort
-        //    deterministically and detect gaps, which matters because the
-        //    Merkle root depends on insertion order.
+        // 2. Scan Semaphore's MemberAdded + MembersAdded events directly
+        //    (batch adds emit MembersAdded, singles emit MemberAdded).
+        //    We deliberately don't use viem's `args` filter for groupId —
+        //    public RPC nodes occasionally drop logs when multiple indexed
+        //    filters are combined; it's safer to pull everything this
+        //    contract emits in the range and filter client-side.
         const latest = await publicClient.getBlockNumber();
         const startBlock =
           ANON_DEPLOY_BLOCK ?? (latest > BigInt(50_000) ? latest - BigInt(50_000) : BigInt(0));
         const CHUNK = BigInt(9_500);
         const entries: { index: bigint; commitment: bigint }[] = [];
+        const MEMBER_ADDED = {
+          type: 'event' as const,
+          name: 'MemberAdded',
+          inputs: [
+            { type: 'uint256', name: 'groupId', indexed: true },
+            { type: 'uint256', name: 'index', indexed: false },
+            { type: 'uint256', name: 'identityCommitment', indexed: false },
+            { type: 'uint256', name: 'merkleTreeRoot', indexed: false },
+          ],
+        };
+        const MEMBERS_ADDED = {
+          type: 'event' as const,
+          name: 'MembersAdded',
+          inputs: [
+            { type: 'uint256', name: 'groupId', indexed: true },
+            { type: 'uint256', name: 'startIndex', indexed: false },
+            { type: 'uint256[]', name: 'identityCommitments', indexed: false },
+            { type: 'uint256', name: 'merkleTreeRoot', indexed: false },
+          ],
+        };
         let cursor = startBlock;
         while (cursor <= latest) {
           const to = cursor + CHUNK > latest ? latest : cursor + CHUNK;
-          const logs = await publicClient.getLogs({
-            address: semaphoreAddr,
-            event: {
-              type: 'event',
-              name: 'MemberAdded',
-              inputs: [
-                { type: 'uint256', name: 'groupId', indexed: true },
-                { type: 'uint256', name: 'index', indexed: false },
-                { type: 'uint256', name: 'identityCommitment', indexed: false },
-                { type: 'uint256', name: 'merkleTreeRoot', indexed: false },
-              ],
-            },
-            args: { groupId: gid },
-            fromBlock: cursor,
-            toBlock: to,
-          });
-          for (const l of logs) {
-            const a = l.args as { index?: bigint; identityCommitment?: bigint };
+          const [singles, batches] = await Promise.all([
+            publicClient.getLogs({
+              address: semaphoreAddr,
+              event: MEMBER_ADDED,
+              fromBlock: cursor,
+              toBlock: to,
+            }),
+            publicClient.getLogs({
+              address: semaphoreAddr,
+              event: MEMBERS_ADDED,
+              fromBlock: cursor,
+              toBlock: to,
+            }),
+          ]);
+          for (const l of singles) {
+            const a = l.args as { groupId?: bigint; index?: bigint; identityCommitment?: bigint };
+            if (a.groupId !== gid) continue;
             if (typeof a.index === 'bigint' && typeof a.identityCommitment === 'bigint') {
               entries.push({ index: a.index, commitment: a.identityCommitment });
+            }
+          }
+          for (const l of batches) {
+            const a = l.args as {
+              groupId?: bigint;
+              startIndex?: bigint;
+              identityCommitments?: readonly bigint[];
+            };
+            if (a.groupId !== gid) continue;
+            if (typeof a.startIndex === 'bigint' && Array.isArray(a.identityCommitments)) {
+              a.identityCommitments.forEach((c, i) => {
+                entries.push({ index: a.startIndex! + BigInt(i), commitment: c });
+              });
             }
           }
           cursor = to + BigInt(1);
@@ -689,7 +722,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         const commitments = entries.map(e => e.commitment);
         if (!commitments.includes(identityObj.commitment)) {
-          throw new Error('Your identity is not yet a member of the Wizper group. Go to /join.');
+          // Also double-check via hasMember (authoritative) to distinguish
+          // "your current identity never joined" vs a subtle scan bug.
+          const auth = (await publicClient.readContract({
+            address: semaphoreAddr,
+            abi: SEMAPHORE_GROUPS_ABI,
+            functionName: 'hasMember',
+            args: [gid, identityObj.commitment],
+          })) as boolean;
+          throw new Error(
+            `Your current identity is not a member of the Wizper group. ` +
+            `Current commitment: ${identityObj.commitment.toString()}. ` +
+            `hasMember=${auth}. ` +
+            (auth
+              ? 'Scan found the group but missed your entry — please report this bug.'
+              : 'This browser likely has a different identity than the one you joined with. Go to /join and import your original secret, or click Join again to register this identity.'),
+          );
         }
 
         // 3. Upload text + SVG + metadata to IPFS (text lives here, not DB).
