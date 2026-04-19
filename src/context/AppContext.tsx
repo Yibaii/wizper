@@ -604,58 +604,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setIsMinting(true);
       try {
-        // 1. Fresh scan of MemberJoined events so we build the exact Merkle
-        //    tree the contract currently stores.
-        const latest = await publicClient.getBlockNumber();
-        const startBlock =
-          ANON_DEPLOY_BLOCK ?? (latest > BigInt(50_000) ? latest - BigInt(50_000) : BigInt(0));
-        const CHUNK = BigInt(9_500);
-        const commitments: bigint[] = [];
-        let cursor = startBlock;
-        while (cursor <= latest) {
-          const to = cursor + CHUNK > latest ? latest : cursor + CHUNK;
-          const logs = await publicClient.getLogs({
-            address: ANON_ADDRESS,
-            event: {
-              type: 'event',
-              name: 'MemberJoined',
-              inputs: [{ type: 'uint256', name: 'identityCommitment' }],
-            },
-            fromBlock: cursor,
-            toBlock: to,
-          });
-          for (const l of logs) {
-            const c = (l.args as { identityCommitment?: bigint }).identityCommitment;
-            if (typeof c === 'bigint') commitments.push(c);
-          }
-          cursor = to + BigInt(1);
-        }
-        if (!commitments.includes(identityObj.commitment)) {
-          throw new Error('Your identity is not yet a member of the Wizper group. Go to /join.');
-        }
-
-        // 2. Upload text + SVG + metadata to IPFS (text lives here, not DB).
-        const svgString = svgElement
-          ? new XMLSerializer().serializeToString(svgElement)
-          : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80"><text y="40" font-size="8">${emotion}</text></svg>`;
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ svg: svgString, text, emotion, wizardId: id }),
-        });
-        if (!uploadRes.ok) throw new Error('IPFS upload failed');
-        const { tokenURI } = (await uploadRes.json()) as { tokenURI: string };
-
-        // 3. Generate Semaphore proof binding stealth address + tokenURI + text hash.
-        const expressionHash = keccak256(toBytes(text));
-        const group = buildGroup(commitments);
-
-        // Sanity check: local Merkle root must match the on-chain Semaphore
-        // group root. If it doesn't, our event scan missed members (usually
-        // because NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK isn't set and the join
-        // events are older than the 50k-block fallback window). Proof
-        // generation takes 2-6s, so catch it here instead of letting the
-        // relayer waste gas hitting Semaphore__MerkleTreeRootIsNotPartOfTheGroup.
+        // 1. Fetch the Semaphore address + groupId + expected tree size/root
+        //    so we know exactly what local state we need to reconstruct.
         const [semaphoreAddr, gid] = await Promise.all([
           publicClient.readContract({
             address: ANON_ADDRESS,
@@ -668,17 +618,100 @@ export function AppProvider({ children }: { children: ReactNode }) {
             functionName: 'groupId',
           }) as Promise<bigint>,
         ]);
-        const onchainRoot = (await publicClient.readContract({
-          address: semaphoreAddr,
-          abi: SEMAPHORE_GROUPS_ABI,
-          functionName: 'getMerkleTreeRoot',
-          args: [gid],
-        })) as bigint;
+        const [expectedSize, onchainRoot] = await Promise.all([
+          publicClient.readContract({
+            address: semaphoreAddr,
+            abi: SEMAPHORE_GROUPS_ABI,
+            functionName: 'getMerkleTreeSize',
+            args: [gid],
+          }) as Promise<bigint>,
+          publicClient.readContract({
+            address: semaphoreAddr,
+            abi: SEMAPHORE_GROUPS_ABI,
+            functionName: 'getMerkleTreeRoot',
+            args: [gid],
+          }) as Promise<bigint>,
+        ]);
+
+        // 2. Scan Semaphore's MemberAdded events directly (filtered by our
+        //    groupId). Using Semaphore's event instead of our wrapper's
+        //    MemberJoined gives us the `index` field — lets us sort
+        //    deterministically and detect gaps, which matters because the
+        //    Merkle root depends on insertion order.
+        const latest = await publicClient.getBlockNumber();
+        const startBlock =
+          ANON_DEPLOY_BLOCK ?? (latest > BigInt(50_000) ? latest - BigInt(50_000) : BigInt(0));
+        const CHUNK = BigInt(9_500);
+        const entries: { index: bigint; commitment: bigint }[] = [];
+        let cursor = startBlock;
+        while (cursor <= latest) {
+          const to = cursor + CHUNK > latest ? latest : cursor + CHUNK;
+          const logs = await publicClient.getLogs({
+            address: semaphoreAddr,
+            event: {
+              type: 'event',
+              name: 'MemberAdded',
+              inputs: [
+                { type: 'uint256', name: 'groupId', indexed: true },
+                { type: 'uint256', name: 'index', indexed: false },
+                { type: 'uint256', name: 'identityCommitment', indexed: false },
+                { type: 'uint256', name: 'merkleTreeRoot', indexed: false },
+              ],
+            },
+            args: { groupId: gid },
+            fromBlock: cursor,
+            toBlock: to,
+          });
+          for (const l of logs) {
+            const a = l.args as { index?: bigint; identityCommitment?: bigint };
+            if (typeof a.index === 'bigint' && typeof a.identityCommitment === 'bigint') {
+              entries.push({ index: a.index, commitment: a.identityCommitment });
+            }
+          }
+          cursor = to + BigInt(1);
+        }
+        entries.sort((a, b) => (a.index < b.index ? -1 : a.index > b.index ? 1 : 0));
+
+        if (BigInt(entries.length) !== expectedSize) {
+          throw new Error(
+            `Event scan missed members. Expected ${expectedSize.toString()} on-chain, ` +
+            `found ${entries.length} MemberAdded event(s). ` +
+            `Check NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK in .env.local — it must be ≤ the block where initialize() ran.`,
+          );
+        }
+        for (let i = 0; i < entries.length; i++) {
+          if (entries[i].index !== BigInt(i)) {
+            throw new Error(
+              `Member index gap at position ${i} (event index=${entries[i].index.toString()}). ` +
+              `Events out of order or missing.`,
+            );
+          }
+        }
+        const commitments = entries.map(e => e.commitment);
+        if (!commitments.includes(identityObj.commitment)) {
+          throw new Error('Your identity is not yet a member of the Wizper group. Go to /join.');
+        }
+
+        // 3. Upload text + SVG + metadata to IPFS (text lives here, not DB).
+        const svgString = svgElement
+          ? new XMLSerializer().serializeToString(svgElement)
+          : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80"><text y="40" font-size="8">${emotion}</text></svg>`;
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ svg: svgString, text, emotion, wizardId: id }),
+        });
+        if (!uploadRes.ok) throw new Error('IPFS upload failed');
+        const { tokenURI } = (await uploadRes.json()) as { tokenURI: string };
+
+        // 4. Generate Semaphore proof binding stealth address + tokenURI + text hash.
+        const expressionHash = keccak256(toBytes(text));
+        const group = buildGroup(commitments);
         if (group.root !== onchainRoot) {
           throw new Error(
-            `Local Merkle root does not match on-chain root. ` +
-            `Scanned ${commitments.length} member(s), local root=${group.root}, on-chain root=${onchainRoot}. ` +
-            `Set NEXT_PUBLIC_WIZPER_DEPLOY_BLOCK in .env.local to the contract deploy block.`,
+            `Local Merkle root does not match on-chain root after reconstructing all ${commitments.length} members. ` +
+            `local=${group.root}, on-chain=${onchainRoot}. ` +
+            `This likely means the @semaphore-protocol/group version disagrees with the on-chain LeanIMT implementation.`,
           );
         }
 
