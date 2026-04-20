@@ -128,11 +128,11 @@ export default function JoinPage() {
                 without revealing who you are.
               </p>
               <p className="text-[11px] leading-relaxed mb-3">
-                Your spirits will be owned by a <strong>stealth address</strong> derived
+                Your wizards will be owned by a <strong>stealth address</strong> derived
                 from this secret. The stealth address has no link to your wallet on-chain.
               </p>
               <p className="text-[11px] leading-relaxed text-wizard-gold">
-                ⚠ If you lose the secret, your spirits are gone forever. There is no recovery.
+                ⚠ If you lose the secret, your wizards are gone forever. There is no recovery.
               </p>
             </ScrollPanel>
 
@@ -180,7 +180,7 @@ export default function JoinPage() {
                 ⚠ Save your secret NOW.
               </p>
               <p className="text-[11px] leading-relaxed mb-3">
-                Without it you cannot prove ownership of your spirits from another device,
+                Without it you cannot prove ownership of your wizards from another device,
                 and if you clear browser data on this device you will lose everything.
               </p>
 
@@ -296,7 +296,7 @@ export default function JoinPage() {
                 ✦ You are now part of the Wizper group.
               </p>
               <p className="text-[11px] leading-relaxed mb-3">
-                From here on, only this browser holds the key to your spirits.
+                From here on, only this browser holds the key to your wizards.
                 Back up your secret any time from this page.
               </p>
 

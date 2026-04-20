@@ -204,7 +204,7 @@ export default function CreateForm() {
                 onClick={handleTransform}
                 disabled={!canSubmit || isMinting}
               >
-                {isMinting ? '✦ Minting…' : '✦ Transform into Spirit'}
+                {isMinting ? '✦ Minting…' : '✦ Transform into Wizard'}
               </PotionButton>
             </div>
 
@@ -266,7 +266,7 @@ export default function CreateForm() {
             transition={{ type: 'spring', damping: 20, stiffness: 200 }}
           >
             <p className="font-pixel text-[10px] text-wizard-cyan mb-4 text-glow-cyan">
-              ✦ Your Spirit is Born
+              ✦ Your Wizard is Born
             </p>
 
             <div className="animate-float mb-6" ref={wizardRef}>
@@ -293,7 +293,7 @@ export default function CreateForm() {
                 variant="violet"
                 onClick={() => router.push('/my')}
               >
-                ✦ My Spirits
+                ✦ My Wizards
               </PotionButton>
             </div>
 

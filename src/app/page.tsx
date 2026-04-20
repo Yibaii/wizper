@@ -58,7 +58,7 @@ export default function HomePage() {
           Wizper
         </h1>
         <h2 className="font-pixel text-xs md:text-sm text-wizard-violet mb-8">
-          Where Emotions Become Spirits
+          Where Emotions Become Wizards
         </h2>
 
         {/* Tagline */}

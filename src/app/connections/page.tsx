@@ -69,7 +69,7 @@ export default function ConnectionsPage() {
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-wizard-violet/60" />
             <span className="font-pixel text-[8px] text-gray-400">
-              Spirit Node
+              Wizard Node
             </span>
           </div>
         </div>

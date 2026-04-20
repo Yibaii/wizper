@@ -85,7 +85,7 @@ export default function FeedPage() {
         {feedExpressions.length === 0 && (
           <div className="text-center py-20">
             <p className="font-pixel text-[10px] text-gray-600 mb-4">
-              No spirits here yet…
+              No wizards here yet…
             </p>
             <p className="font-pixel text-[8px] text-gray-700">
               Mint your first expression to appear in the feed

@@ -309,7 +309,7 @@ export default function ZkPocPage() {
         'data:application/json;base64,' +
         Buffer.from(
           JSON.stringify({
-            name: 'Wizper POC Spirit',
+            name: 'Wizper POC Wizard',
             description: `emotion: ${emotion}`,
             image: '',
             attributes: [{ trait_type: 'emotion', value: emotion }],
@@ -454,7 +454,7 @@ export default function ZkPocPage() {
       </section>
 
       <section style={box}>
-        <h2 style={{ fontSize: 14 }}>5. Your spirits (owned by stealth address)</h2>
+        <h2 style={{ fontSize: 14 }}>5. Your wizards (owned by stealth address)</h2>
         {mintedTokenIds.length === 0
           ? <div>none yet</div>
           : <ul>{mintedTokenIds.map(id => <li key={id}>tokenId {id}</li>)}</ul>
@@ -463,10 +463,10 @@ export default function ZkPocPage() {
       </section>
 
       <section style={box}>
-        <h2 style={{ fontSize: 14 }}>6. Link two spirits</h2>
+        <h2 style={{ fontSize: 14 }}>6. Link two wizards</h2>
         <div style={{ fontSize: 11, color: '#999', marginBottom: 8 }}>
           Only the stealth owner of the signing side can sign. To test the full
-          handshake with one browser, mint two spirits under the same identity
+          handshake with one browser, mint two wizards under the same identity
           and run request then confirm. For real two-user testing, use two
           browsers (different identities) — one signs request on its token, the
           other signs confirm on its token.

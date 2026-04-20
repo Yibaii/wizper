@@ -79,7 +79,7 @@ export default function MyExpressionsPage() {
       <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center px-4">
         <div className="text-center max-w-md">
           <p className="font-pixel text-[10px] text-gray-400 mb-4">
-            To see your spirits, either set up your anonymous identity or connect the wallet you used before.
+            To see your wizards, either set up your anonymous identity or connect the wallet you used before.
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
             <PotionButton variant="violet" onClick={() => router.push('/join')}>
@@ -108,7 +108,7 @@ export default function MyExpressionsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h1 className="font-pixel text-lg text-wizard-violet text-glow-violet mb-1">
-              ✦ My Spirits
+              ✦ My Wizards
             </h1>
             <div className="font-pixel text-[8px] text-gray-500 space-y-1">
               {stealth && (
@@ -195,10 +195,10 @@ export default function MyExpressionsPage() {
         {myExpressions.length === 0 && (
           <div className="text-center py-20">
             <p className="font-pixel text-[10px] text-gray-600 mb-4">
-              No spirits yet — your first one is waiting to be born.
+              No wizards yet — your first one is waiting to be born.
             </p>
             <Link href="/create">
-              <PotionButton variant="violet">✦ Create Your First Spirit</PotionButton>
+              <PotionButton variant="violet">✦ Create Your First Wizard</PotionButton>
             </Link>
           </div>
         )}

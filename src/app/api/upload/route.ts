@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     // source of truth for the text — nothing on-chain, no DB dependency.
     // Text is therefore permanent and public, but has no link to any wallet.
     const metadata = {
-      name: `Wizper Spirit #${wizardId}`,
+      name: `Wizper Wizard #${wizardId}`,
       description: text,
       image: imageURI,
       attributes: [

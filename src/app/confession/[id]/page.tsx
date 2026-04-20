@@ -119,11 +119,11 @@ export default function ConfessionDetailPage({
 
   async function handleRequest(other: Confession) {
     if (!confession.tokenId || !other.tokenId) {
-      setLinkError('Both spirits must be minted on-chain before linking');
+      setLinkError('Both wizards must be minted on-chain before linking');
       return;
     }
     if (!iOwnThis) {
-      setLinkError('You can only initiate links from your own spirits');
+      setLinkError('You can only initiate links from your own wizards');
       return;
     }
 
@@ -156,7 +156,7 @@ export default function ConfessionDetailPage({
 
   async function handleConfirm(other: Confession) {
     if (!confession.tokenId || !other.tokenId) {
-      setLinkError('Both spirits must be minted on-chain before linking');
+      setLinkError('Both wizards must be minted on-chain before linking');
       return;
     }
     // In on-chain land, confirming means: the stealth owner of `other` (the
@@ -241,7 +241,7 @@ export default function ConfessionDetailPage({
                 Minted anonymously via zero-knowledge proof
               </p>
               <p className="text-[10px] text-gray-500 leading-relaxed">
-                This spirit is owned by a stealth address. No on-chain link
+                This wizard is owned by a stealth address. No on-chain link
                 exists between it and the author&apos;s main wallet.
               </p>
             </div>
@@ -257,7 +257,7 @@ export default function ConfessionDetailPage({
         {/* Related — invite to link */}
         <div className="mb-8">
           <h3 className="font-pixel text-[10px] text-wizard-cyan mb-4 text-glow-cyan">
-            ✦ Similar Spirits
+            ✦ Similar Wizards
           </h3>
           <div className="space-y-3">
             {related.map(r => {
@@ -291,13 +291,13 @@ export default function ConfessionDetailPage({
             })}
             {related.length === 0 && (
               <p className="font-pixel text-[8px] text-gray-600">
-                No similar spirits found yet
+                No similar wizards found yet
               </p>
             )}
           </div>
           {!iOwnThis && (
             <p className="mt-3 font-pixel text-[8px] text-gray-600">
-              You can only initiate or confirm links from your own spirits.
+              You can only initiate or confirm links from your own wizards.
             </p>
           )}
         </div>
