@@ -393,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         abi: ANON_ABI_PARSED,
         functionName: 'joinGroup',
         args: [identityObj.commitment],
+        gas: BigInt(500_000),
       });
       if (publicClient) {
         const receipt = await publicClient.waitForTransactionReceipt({ hash });

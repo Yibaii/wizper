@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    const hash = await wallet.writeContract(request);
+    const hash = await wallet.writeContract({ ...request, gas: BigInt(2_000_000) });
     return NextResponse.json({ hash });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
